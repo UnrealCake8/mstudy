@@ -31,6 +31,8 @@ Google Cloud setup:
 
 No additional Vercel secret is required for this Classroom implementation. Classroom access tokens are used in memory to fetch data and are not stored in Firestore. MStudy stores only a cached copy of the student's course and assignment metadata under their Firebase UID.
 
+The current integration syncs when the student connects or presses Sync Classroom. Persistent background syncing can be added later with a server-side OAuth refresh-token flow if needed.
+
 Some managed Google Workspace domains block unapproved third-party OAuth apps. In that case the student's Workspace administrator must allow/trust MStudy before Classroom can be connected.
 
 ## Data model
