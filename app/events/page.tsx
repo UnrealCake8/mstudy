@@ -1,0 +1,1 @@
+import type{Metadata}from"next";import{AppShell}from"@/components/app-shell";import{CollectionPage}from"@/components/collection-page";export const metadata:Metadata={title:"Events"};export default function Page(){return <AppShell><CollectionPage kind="events"/></AppShell>}

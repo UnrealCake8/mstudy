@@ -1,0 +1,1 @@
+export default function Loading(){return <main className="center-screen"><div className="spinner"/><p>Loading MStudy…</p></main>}
