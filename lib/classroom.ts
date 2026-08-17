@@ -43,6 +43,8 @@ type ClassroomTime = { hours?: number; minutes?: number };
 type RawAssignment = Omit<ClassroomAssignment, "courseId" | "dueDate" | "dueTime"> & { dueDate?: ClassroomDate; dueTime?: ClassroomTime };
 type CoursesResponse = { courses?: ClassroomCourse[]; nextPageToken?: string };
 type WorkResponse = { courseWork?: RawAssignment[]; nextPageToken?: string };
+type Submission = { courseWorkId?: string; state?: string };
+type SubmissionsResponse = { studentSubmissions?: Submission[]; nextPageToken?: string };
 type BatchOp = { ref: DocumentReference; data?: Record<string, unknown>; remove?: boolean };
 
 function provider() {
@@ -127,6 +129,21 @@ async function allWork(courseId: string, token: string) {
   return work;
 }
 
+async function ownSubmissionStates(courseId: string, token: string) {
+  const states = new Map<string, string>();
+  let pageToken = "";
+  do {
+    const qs = new URLSearchParams({ userId: "me", pageSize: "100" });
+    if (pageToken) qs.set("pageToken", pageToken);
+    const data = await classroomFetch<SubmissionsResponse>(`courses/${encodeURIComponent(courseId)}/courseWork/-/studentSubmissions?${qs.toString()}`, token);
+    for (const submission of data.studentSubmissions || []) {
+      if (submission.courseWorkId) states.set(submission.courseWorkId, submission.state || "");
+    }
+    pageToken = data.nextPageToken || "";
+  } while (pageToken);
+  return states;
+}
+
 function formatDate(value?: ClassroomDate) {
   if (!value?.year || !value.month || !value.day) return "";
   return `${value.year}-${String(value.month).padStart(2, "0")}-${String(value.day).padStart(2, "0")}`;
@@ -135,6 +152,10 @@ function formatDate(value?: ClassroomDate) {
 function formatTime(value?: ClassroomTime) {
   if (!value) return "";
   return `${String(value.hours || 0).padStart(2, "0")}:${String(value.minutes || 0).padStart(2, "0")}`;
+}
+
+function isDoneSubmission(state?: string) {
+  return state === "TURNED_IN" || state === "RETURNED";
 }
 
 async function commitInChunks(ops: BatchOp[]) {
@@ -157,17 +178,22 @@ export async function syncClassroom(user: User) {
     const courses = discovered.courses;
     const assignments = (await Promise.all(courses.map(async course => {
       try {
-        const items = await allWork(course.id, token);
-        return items.map(item => ({
-          id: item.id,
-          courseId: course.id,
-          title: item.title,
-          description: item.description || "",
-          alternateLink: item.alternateLink || "",
-          dueDate: formatDate(item.dueDate),
-          dueTime: formatTime(item.dueTime),
-          state: item.state || "",
-        } satisfies ClassroomAssignment));
+        const [items, submissionStates] = await Promise.all([
+          allWork(course.id, token),
+          course.role === "student" ? ownSubmissionStates(course.id, token).catch(() => new Map<string, string>()) : Promise.resolve(new Map<string, string>()),
+        ]);
+        return items
+          .filter(item => !isDoneSubmission(submissionStates.get(item.id)))
+          .map(item => ({
+            id: item.id,
+            courseId: course.id,
+            title: item.title,
+            description: item.description || "",
+            alternateLink: item.alternateLink || "",
+            dueDate: formatDate(item.dueDate),
+            dueTime: formatTime(item.dueTime),
+            state: item.state || "",
+          } satisfies ClassroomAssignment));
       } catch (error) {
         console.warn(`Could not load coursework for Classroom course ${course.id}`, error);
         return [];
