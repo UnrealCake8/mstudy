@@ -7,6 +7,7 @@ import { db } from "@/lib/firebase";
 const CLASSROOM_SCOPES = [
   "https://www.googleapis.com/auth/classroom.courses.readonly",
   "https://www.googleapis.com/auth/classroom.coursework.me.readonly",
+  "https://www.googleapis.com/auth/classroom.coursework.students.readonly",
 ] as const;
 
 export type ClassroomCourse = {
@@ -72,9 +73,10 @@ async function allCourses(token: string) {
   const courses: ClassroomCourse[] = [];
   let pageToken = "";
   do {
-    const qs = new URLSearchParams({ studentId: "me", courseStates: "ACTIVE", pageSize: "100" });
+    const qs = new URLSearchParams({ pageSize: "100" });
+    qs.append("courseStates", "ACTIVE");
     if (pageToken) qs.set("pageToken", pageToken);
-    const data = await classroomFetch<CoursesResponse>(`courses?${qs}`, token);
+    const data = await classroomFetch<CoursesResponse>(`courses?${qs.toString()}`, token);
     courses.push(...(data.courses || []));
     pageToken = data.nextPageToken || "";
   } while (pageToken);
@@ -85,9 +87,10 @@ async function allWork(courseId: string, token: string) {
   const work: RawAssignment[] = [];
   let pageToken = "";
   do {
-    const qs = new URLSearchParams({ courseWorkStates: "PUBLISHED", orderBy: "dueDate desc", pageSize: "100" });
+    const qs = new URLSearchParams({ orderBy: "dueDate desc", pageSize: "100" });
+    qs.append("courseWorkStates", "PUBLISHED");
     if (pageToken) qs.set("pageToken", pageToken);
-    const data = await classroomFetch<WorkResponse>(`courses/${encodeURIComponent(courseId)}/courseWork?${qs}`, token);
+    const data = await classroomFetch<WorkResponse>(`courses/${encodeURIComponent(courseId)}/courseWork?${qs.toString()}`, token);
     work.push(...(data.courseWork || []));
     pageToken = data.nextPageToken || "";
   } while (pageToken);
@@ -121,17 +124,22 @@ export async function syncClassroom(user: User) {
 
     const courses = await allCourses(token);
     const assignments = (await Promise.all(courses.map(async course => {
-      const items = await allWork(course.id, token);
-      return items.map(item => ({
-        id: item.id,
-        courseId: course.id,
-        title: item.title,
-        description: item.description || "",
-        alternateLink: item.alternateLink || "",
-        dueDate: formatDate(item.dueDate),
-        dueTime: formatTime(item.dueTime),
-        state: item.state || "",
-      } satisfies ClassroomAssignment));
+      try {
+        const items = await allWork(course.id, token);
+        return items.map(item => ({
+          id: item.id,
+          courseId: course.id,
+          title: item.title,
+          description: item.description || "",
+          alternateLink: item.alternateLink || "",
+          dueDate: formatDate(item.dueDate),
+          dueTime: formatTime(item.dueTime),
+          state: item.state || "",
+        } satisfies ClassroomAssignment));
+      } catch (error) {
+        console.warn(`Could not load coursework for Classroom course ${course.id}`, error);
+        return [];
+      }
     }))).flat();
 
     const courseRef = collection(db, "users", user.uid, "classroomCourses");
