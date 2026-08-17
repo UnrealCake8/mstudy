@@ -16,6 +16,7 @@ export type ClassroomCourse = {
   section?: string;
   alternateLink?: string;
   courseState?: string;
+  role?: "student" | "teacher" | "unknown";
 };
 
 export type ClassroomAssignment = {
@@ -27,6 +28,14 @@ export type ClassroomAssignment = {
   dueDate?: string;
   dueTime?: string;
   state?: string;
+};
+
+export type ClassroomSyncSummary = {
+  googleEmail: string;
+  studentCourses: number;
+  teacherCourses: number;
+  totalCourses: number;
+  assignments: number;
 };
 
 type ClassroomDate = { year?: number; month?: number; day?: number };
@@ -69,18 +78,39 @@ async function classroomFetch<T>(path: string, token: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-async function allCourses(token: string) {
+async function coursesForRole(token: string, role: "student" | "teacher") {
   const courses: ClassroomCourse[] = [];
   let pageToken = "";
   do {
     const qs = new URLSearchParams({ pageSize: "100" });
-    qs.append("courseStates", "ACTIVE");
+    qs.set(role === "student" ? "studentId" : "teacherId", "me");
     if (pageToken) qs.set("pageToken", pageToken);
     const data = await classroomFetch<CoursesResponse>(`courses?${qs.toString()}`, token);
-    courses.push(...(data.courses || []));
+    courses.push(...(data.courses || []).map(course => ({ ...course, role })));
     pageToken = data.nextPageToken || "";
   } while (pageToken);
   return courses;
+}
+
+async function allCourses(token: string) {
+  const [studentResult, teacherResult] = await Promise.allSettled([
+    coursesForRole(token, "student"),
+    coursesForRole(token, "teacher"),
+  ]);
+
+  const studentCourses = studentResult.status === "fulfilled" ? studentResult.value : [];
+  const teacherCourses = teacherResult.status === "fulfilled" ? teacherResult.value : [];
+  const merged = new Map<string, ClassroomCourse>();
+  [...studentCourses, ...teacherCourses].forEach(course => {
+    const existing = merged.get(course.id);
+    merged.set(course.id, existing ? { ...existing, role: existing.role === course.role ? existing.role : "unknown" } : course);
+  });
+
+  return {
+    courses: [...merged.values()],
+    studentCount: studentCourses.length,
+    teacherCount: teacherCourses.length,
+  };
 }
 
 async function allWork(courseId: string, token: string) {
@@ -122,7 +152,9 @@ export async function syncClassroom(user: User) {
     const token = credential?.accessToken;
     if (!token) throw new Error("Google did not return Classroom access. Try connecting again.");
 
-    const courses = await allCourses(token);
+    const googleEmail = result.user.email || user.email || "Unknown Google account";
+    const discovered = await allCourses(token);
+    const courses = discovered.courses;
     const assignments = (await Promise.all(courses.map(async course => {
       try {
         const items = await allWork(course.id, token);
@@ -156,12 +188,21 @@ export async function syncClassroom(user: User) {
       ...assignments.map(item => ({ ref: doc(assignmentRef, `${item.courseId}_${item.id}`), data: item as Record<string, unknown> })),
     ]);
 
+    const summary: ClassroomSyncSummary = {
+      googleEmail,
+      studentCourses: discovered.studentCount,
+      teacherCourses: discovered.teacherCount,
+      totalCourses: courses.length,
+      assignments: assignments.length,
+    };
+
     await setDoc(doc(db, "users", user.uid), {
       classroomConnected: true,
       classroomLastSync: serverTimestamp(),
+      classroomSyncSummary: summary,
     }, { merge: true });
 
-    return { courses, assignments };
+    return { courses, assignments, summary };
   } catch (error) {
     throw friendlyError(error);
   }
@@ -177,7 +218,7 @@ export async function disconnectClassroom(user: User) {
       ...courses.docs.map(item => ({ ref: item.ref, remove: true })),
       ...assignments.docs.map(item => ({ ref: item.ref, remove: true })),
     ]);
-    await setDoc(doc(db, "users", user.uid), { classroomConnected: false, classroomLastSync: null }, { merge: true });
+    await setDoc(doc(db, "users", user.uid), { classroomConnected: false, classroomLastSync: null, classroomSyncSummary: null }, { merge: true });
   } catch (error) {
     throw friendlyError(error);
   }
