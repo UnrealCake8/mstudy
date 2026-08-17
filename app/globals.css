@@ -39,6 +39,17 @@ button, input { font: inherit; }
 .row:last-child { border-bottom:0; }
 .row small { color:var(--muted); }
 
+.auth-shell { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: radial-gradient(circle at top, #e7f6ed, var(--bg) 52%); }
+.auth-card { width: min(460px, 100%); background: white; border: 1px solid var(--line); border-radius: 28px; padding: 30px; box-shadow: 0 24px 70px rgba(20,107,70,.12); }
+.auth-brand { display: inline-block; font-weight: 900; font-size: 1.35rem; letter-spacing: -0.05em; color: var(--green-dark); }
+.auth-kicker { margin: 8px 0 26px; color: var(--green); font-weight: 700; font-size: .9rem; }
+.auth-card h1 { margin: 0 0 10px; font-size: 2rem; letter-spacing: -0.04em; }
+.auth-copy, .auth-note { color: var(--muted); line-height: 1.55; }
+.auth-note { margin-top: 18px; font-size: .84rem; }
+.google-button { width: 100%; margin-top: 14px; border: 0; border-radius: 14px; padding: 13px 16px; background: var(--green-dark); color: white; font-weight: 800; cursor: pointer; }
+.google-button:disabled { opacity: .65; cursor: wait; }
+.auth-error { margin: 10px 0 0; color: #a22; font-size: .86rem; }
+
 @media (max-width: 820px) {
   .shell { padding: 16px; }
   .hero { padding: 24px; border-radius: 22px; }
@@ -48,4 +59,6 @@ button, input { font: inherit; }
 @media (max-width: 480px) {
   .grid { grid-template-columns: 1fr; }
   .topbar { align-items: flex-start; }
+  .auth-shell { padding: 16px; }
+  .auth-card { padding: 24px; border-radius: 22px; }
 }
