@@ -14,7 +14,7 @@ MStudy is a student-first school companion for homework, timetables, notes, scho
 
 ## Google Classroom
 
-MStudy uses the Google account already authenticated by Firebase and asks the student for additional read-only Classroom permission when they choose Connect Classroom.
+MStudy uses the Google account already authenticated by Firebase and asks the user for additional read-only Classroom permission when they choose Connect Classroom.
 
 Google Cloud setup:
 
@@ -25,15 +25,18 @@ Google Cloud setup:
 5. Add the following scopes:
    - `https://www.googleapis.com/auth/classroom.courses.readonly`
    - `https://www.googleapis.com/auth/classroom.coursework.me.readonly`
+   - `https://www.googleapis.com/auth/classroom.coursework.students.readonly`
 6. Configure the app name, support email, developer contact details and any required authorized domains.
 7. While the app is in Testing, add the Google accounts you want to test with as test users.
 8. Before a broad public production launch, complete Google's OAuth verification for the sensitive Classroom scopes.
 
-No additional Vercel secret is required for this Classroom implementation. Classroom access tokens are used in memory to fetch data and are not stored in Firestore. MStudy stores only a cached copy of the student's course and assignment metadata under their Firebase UID.
+The `coursework.me.readonly` scope is used for student accounts. `coursework.students.readonly` lets teacher accounts read coursework too, which is useful for test accounts or future teacher-facing features. All Classroom access remains read-only.
 
-The current integration syncs when the student connects or presses Sync Classroom. Persistent background syncing can be added later with a server-side OAuth refresh-token flow if needed.
+No additional Vercel secret is required for this Classroom implementation. Classroom access tokens are used in memory to fetch data and are not stored in Firestore. MStudy stores only a cached copy of course and assignment metadata under the authenticated Firebase UID.
 
-Some managed Google Workspace domains block unapproved third-party OAuth apps. In that case the student's Workspace administrator must allow/trust MStudy before Classroom can be connected.
+The current integration syncs when the user connects or presses Sync Classroom. Persistent background syncing can be added later with a server-side OAuth refresh-token flow if needed.
+
+Some managed Google Workspace domains block unapproved third-party OAuth apps. In that case the user's Workspace administrator must allow/trust MStudy before Classroom can be connected.
 
 ## Data model
 
