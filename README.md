@@ -21,11 +21,13 @@ Google Cloud setup:
 1. Open the Google Cloud project that backs the MStudy Firebase project.
 2. Enable the Google Classroom API.
 3. Open Google Auth Platform / OAuth consent configuration.
-4. Add the following scopes:
+4. Set the audience to External if students from multiple Google Workspace organizations should be able to connect.
+5. Add the following scopes:
    - `https://www.googleapis.com/auth/classroom.courses.readonly`
    - `https://www.googleapis.com/auth/classroom.coursework.me.readonly`
-5. Configure the app audience/consent screen as required by Google.
-6. If the OAuth app is in testing mode, add the Google accounts you want to test with as test users.
+6. Configure the app name, support email, developer contact details and any required authorized domains.
+7. While the app is in Testing, add the Google accounts you want to test with as test users.
+8. Before a broad public production launch, complete Google's OAuth verification for the sensitive Classroom scopes.
 
 No additional Vercel secret is required for this Classroom implementation. Classroom access tokens are used in memory to fetch data and are not stored in Firestore. MStudy stores only a cached copy of the student's course and assignment metadata under their Firebase UID.
 
