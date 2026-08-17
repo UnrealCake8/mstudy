@@ -42,6 +42,21 @@ function provider() {
   return p;
 }
 
+function friendlyError(error: unknown) {
+  const raw = error instanceof Error ? error.message : String(error || "");
+  const lower = raw.toLowerCase();
+  if (lower.includes("missing or insufficient permissions") || lower.includes("permission-denied")) {
+    return new Error("MStudy is signed in, but Firestore is blocking access. Deploy the firestore.rules from this PR in Firebase Console → Firestore Database → Rules, then try again.");
+  }
+  if (lower.includes("access blocked") || lower.includes("admin_policy_enforced")) {
+    return new Error("Your school Google Workspace administrator has blocked MStudy from accessing Google Classroom.");
+  }
+  if (lower.includes("api has not been used") || lower.includes("classroom.googleapis.com") && lower.includes("disabled")) {
+    return new Error("The Google Classroom API is not enabled for the MStudy Google Cloud project yet.");
+  }
+  return error instanceof Error ? error : new Error("Could not sync Google Classroom.");
+}
+
 async function classroomFetch<T>(path: string, token: string): Promise<T> {
   const response = await fetch(`https://classroom.googleapis.com/v1/${path}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -98,56 +113,64 @@ async function commitInChunks(ops: BatchOp[]) {
 }
 
 export async function syncClassroom(user: User) {
-  const result = await reauthenticateWithPopup(user, provider());
-  const credential = GoogleAuthProvider.credentialFromResult(result);
-  const token = credential?.accessToken;
-  if (!token) throw new Error("Google did not return Classroom access. Try connecting again.");
+  try {
+    const result = await reauthenticateWithPopup(user, provider());
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    const token = credential?.accessToken;
+    if (!token) throw new Error("Google did not return Classroom access. Try connecting again.");
 
-  const courses = await allCourses(token);
-  const assignments = (await Promise.all(courses.map(async course => {
-    const items = await allWork(course.id, token);
-    return items.map(item => ({
-      id: item.id,
-      courseId: course.id,
-      title: item.title,
-      description: item.description || "",
-      alternateLink: item.alternateLink || "",
-      dueDate: formatDate(item.dueDate),
-      dueTime: formatTime(item.dueTime),
-      state: item.state || "",
-    } satisfies ClassroomAssignment));
-  }))).flat();
+    const courses = await allCourses(token);
+    const assignments = (await Promise.all(courses.map(async course => {
+      const items = await allWork(course.id, token);
+      return items.map(item => ({
+        id: item.id,
+        courseId: course.id,
+        title: item.title,
+        description: item.description || "",
+        alternateLink: item.alternateLink || "",
+        dueDate: formatDate(item.dueDate),
+        dueTime: formatTime(item.dueTime),
+        state: item.state || "",
+      } satisfies ClassroomAssignment));
+    }))).flat();
 
-  const courseRef = collection(db, "users", user.uid, "classroomCourses");
-  const assignmentRef = collection(db, "users", user.uid, "classroomAssignments");
-  const [oldCourses, oldAssignments] = await Promise.all([getDocs(courseRef), getDocs(assignmentRef)]);
+    const courseRef = collection(db, "users", user.uid, "classroomCourses");
+    const assignmentRef = collection(db, "users", user.uid, "classroomAssignments");
+    const [oldCourses, oldAssignments] = await Promise.all([getDocs(courseRef), getDocs(assignmentRef)]);
 
-  await commitInChunks([
-    ...oldCourses.docs.map(item => ({ ref: item.ref, remove: true })),
-    ...oldAssignments.docs.map(item => ({ ref: item.ref, remove: true })),
-  ]);
+    await commitInChunks([
+      ...oldCourses.docs.map(item => ({ ref: item.ref, remove: true })),
+      ...oldAssignments.docs.map(item => ({ ref: item.ref, remove: true })),
+    ]);
 
-  await commitInChunks([
-    ...courses.map(course => ({ ref: doc(courseRef, course.id), data: course as Record<string, unknown> })),
-    ...assignments.map(item => ({ ref: doc(assignmentRef, `${item.courseId}_${item.id}`), data: item as Record<string, unknown> })),
-  ]);
+    await commitInChunks([
+      ...courses.map(course => ({ ref: doc(courseRef, course.id), data: course as Record<string, unknown> })),
+      ...assignments.map(item => ({ ref: doc(assignmentRef, `${item.courseId}_${item.id}`), data: item as Record<string, unknown> })),
+    ]);
 
-  await setDoc(doc(db, "users", user.uid), {
-    classroomConnected: true,
-    classroomLastSync: serverTimestamp(),
-  }, { merge: true });
+    await setDoc(doc(db, "users", user.uid), {
+      classroomConnected: true,
+      classroomLastSync: serverTimestamp(),
+    }, { merge: true });
 
-  return { courses, assignments };
+    return { courses, assignments };
+  } catch (error) {
+    throw friendlyError(error);
+  }
 }
 
 export async function disconnectClassroom(user: User) {
-  const [courses, assignments] = await Promise.all([
-    getDocs(collection(db, "users", user.uid, "classroomCourses")),
-    getDocs(collection(db, "users", user.uid, "classroomAssignments")),
-  ]);
-  await commitInChunks([
-    ...courses.docs.map(item => ({ ref: item.ref, remove: true })),
-    ...assignments.docs.map(item => ({ ref: item.ref, remove: true })),
-  ]);
-  await setDoc(doc(db, "users", user.uid), { classroomConnected: false, classroomLastSync: null }, { merge: true });
+  try {
+    const [courses, assignments] = await Promise.all([
+      getDocs(collection(db, "users", user.uid, "classroomCourses")),
+      getDocs(collection(db, "users", user.uid, "classroomAssignments")),
+    ]);
+    await commitInChunks([
+      ...courses.docs.map(item => ({ ref: item.ref, remove: true })),
+      ...assignments.docs.map(item => ({ ref: item.ref, remove: true })),
+    ]);
+    await setDoc(doc(db, "users", user.uid), { classroomConnected: false, classroomLastSync: null }, { merge: true });
+  } catch (error) {
+    throw friendlyError(error);
+  }
 }
