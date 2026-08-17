@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { AuthProvider } from "@/components/auth/auth-provider";
 import "./globals.css";
+import "./theme.css";
 
 export const metadata: Metadata = {
   title: { default: "MStudy", template: "%s · MStudy" },
