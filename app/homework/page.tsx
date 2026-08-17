@@ -1,0 +1,1 @@
+import type{Metadata}from"next";import{AppShell}from"@/components/app-shell";import{HomeworkPage}from"@/components/homework-page";export const metadata:Metadata={title:"Homework"};export default function Page(){return <AppShell><HomeworkPage/></AppShell>}

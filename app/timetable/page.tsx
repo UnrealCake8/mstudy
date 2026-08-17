@@ -1,0 +1,1 @@
+import type{Metadata}from"next";import{AppShell}from"@/components/app-shell";import{TimetablePage}from"@/components/timetable-page";export const metadata:Metadata={title:"Timetable"};export default function Page(){return <AppShell><TimetablePage/></AppShell>}

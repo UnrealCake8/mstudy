@@ -1,0 +1,1 @@
+"use client";export default function Error({reset}:{reset:()=>void}){return <main className="center-screen"><h1>Something went wrong</h1><p>MStudy couldn’t load this screen.</p><button className="primary-button" onClick={reset}>Try again</button></main>}

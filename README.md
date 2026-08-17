@@ -1,21 +1,23 @@
 # MStudy
 
-MStudy is a student-first school companion for planning, homework, timetables, notes, events, and connected school tools.
+MStudy is a student-first school companion for homework, timetables, notes and school events.
 
-## Stack
+## Production setup
 
-- Next.js + React + TypeScript
-- Firebase Authentication
-- Firestore
-- Google sign-in
-- Google Classroom / Calendar / Drive integration planned as optional connections
+1. Create a Firebase Web App.
+2. Enable Google in Firebase Authentication.
+3. Create Firestore in production mode.
+4. Copy the values from `.env.example` into Vercel Environment Variables.
+5. In Firebase Authentication > Settings > Authorized domains, add your Vercel/custom production domain.
+6. Install Firebase CLI and deploy the included rules with `firebase deploy --only firestore:rules`.
+7. Deploy the repository on Vercel.
 
-## Local setup
+## Data model
 
-1. Copy `.env.example` to `.env.local`.
-2. Create a Firebase web app and paste its public configuration values into `.env.local`.
-3. Enable Google as a sign-in provider in Firebase Authentication.
-4. Create a Firestore database.
-5. Run `npm install` and then `npm run dev`.
+All private student data is scoped below `users/{firebaseUid}`. Firestore rules only allow the authenticated owner to access that tree.
 
-The app is intentionally designed so students can use MStudy without connecting Google Classroom. Google school-tool integrations will be optional enhancements.
+## Commands
+
+- `npm run dev` — local development
+- `npm run build` — production build
+- `npm run check` — TypeScript check

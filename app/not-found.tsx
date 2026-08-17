@@ -1,0 +1,1 @@
+import Link from"next/link";export default function NotFound(){return <main className="center-screen"><h1>Page not found</h1><p>That MStudy page doesn’t exist.</p><Link className="primary-button" href="/">Go home</Link></main>}
