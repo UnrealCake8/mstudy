@@ -1,16 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { doc, onSnapshot } from "firebase/firestore";
 import { ExternalLink, GraduationCap, RefreshCw, Unplug } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { useAuth } from "@/components/auth/auth-provider";
 import { subscribeCollection } from "@/lib/data";
+import { db } from "@/lib/firebase";
 import { ClassroomAssignment, ClassroomCourse, disconnectClassroom, syncClassroom } from "@/lib/classroom";
 
 export function ClassroomPage() {
   const { user } = useAuth();
   const [courses, setCourses] = useState<ClassroomCourse[]>([]);
   const [assignments, setAssignments] = useState<ClassroomAssignment[]>([]);
+  const [connected, setConnected] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -18,7 +21,8 @@ export function ClassroomPage() {
     if (!user) return;
     const stopCourses = subscribeCollection<ClassroomCourse>(user.uid, "classroomCourses", setCourses);
     const stopAssignments = subscribeCollection<ClassroomAssignment>(user.uid, "classroomAssignments", setAssignments);
-    return () => { stopCourses(); stopAssignments(); };
+    const stopProfile = onSnapshot(doc(db, "users", user.uid), snapshot => setConnected(Boolean(snapshot.data()?.classroomConnected)));
+    return () => { stopCourses(); stopAssignments(); stopProfile(); };
   }, [user]);
 
   const courseNames = useMemo(() => new Map(courses.map(course => [course.id, course.name])), [courses]);
@@ -44,8 +48,6 @@ export function ClassroomPage() {
     finally { setBusy(false); }
   }
 
-  const connected = courses.length > 0 || assignments.length > 0;
-
   return <AppShell><section className="page">
     <div className="page-head">
       <div><p className="eyebrow">Connected school tools</p><h1>Google Classroom</h1><p>Your active classes and published assignments, in MStudy.</p></div>
@@ -60,7 +62,7 @@ export function ClassroomPage() {
       <button className="primary-button" onClick={connect} disabled={busy}>{busy ? "Connecting…" : "Connect Google Classroom"}</button>
     </div> : <>
       <div className="section-row"><h2 className="section-title">Classes</h2><button className="text-button" onClick={disconnect} disabled={busy}><Unplug size={15}/> Disconnect</button></div>
-      <div className="classroom-course-grid">{courses.map(course => <article className="data-card classroom-course" key={course.id}><div><span className="pill">Class</span><h2>{course.name}</h2>{course.section ? <p>{course.section}</p> : null}</div>{course.alternateLink ? <a className="icon-button" href={course.alternateLink} target="_blank" rel="noreferrer" aria-label={`Open ${course.name} in Classroom`}><ExternalLink size={17}/></a> : null}</article>)}</div>
+      {courses.length === 0 ? <div className="empty-state"><strong>No active classes found</strong></div> : <div className="classroom-course-grid">{courses.map(course => <article className="data-card classroom-course" key={course.id}><div><span className="pill">Class</span><h2>{course.name}</h2>{course.section ? <p>{course.section}</p> : null}</div>{course.alternateLink ? <a className="icon-button" href={course.alternateLink} target="_blank" rel="noreferrer" aria-label={`Open ${course.name} in Classroom`}><ExternalLink size={17}/></a> : null}</article>)}</div>}
 
       <h2 className="section-title">Assignments</h2>
       {sorted.length === 0 ? <div className="empty-state"><strong>No published assignments</strong></div> : <div className="task-list">{sorted.map(item => <article className="task-row classroom-task" key={`${item.courseId}_${item.id}`}><div className="task-copy"><strong>{item.title}</strong><span>{courseNames.get(item.courseId) || "Class"}{item.dueDate ? ` · Due ${item.dueDate}${item.dueTime ? ` ${item.dueTime}` : ""}` : ""}</span></div>{item.alternateLink ? <a className="secondary-button compact-button" href={item.alternateLink} target="_blank" rel="noreferrer">Open <ExternalLink size={14}/></a> : null}</article>)}</div>}
