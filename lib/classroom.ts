@@ -1,13 +1,12 @@
 "use client";
 
 import { GoogleAuthProvider, reauthenticateWithPopup, type User } from "firebase/auth";
-import { collection, deleteDoc, doc, getDocs, serverTimestamp, setDoc, writeBatch } from "firebase/firestore";
+import { collection, doc, getDocs, serverTimestamp, setDoc, writeBatch, type DocumentReference } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 const CLASSROOM_SCOPES = [
   "https://www.googleapis.com/auth/classroom.courses.readonly",
   "https://www.googleapis.com/auth/classroom.coursework.me.readonly",
-  "https://www.googleapis.com/auth/classroom.announcements.readonly",
 ] as const;
 
 export type ClassroomCourse = {
@@ -29,8 +28,12 @@ export type ClassroomAssignment = {
   state?: string;
 };
 
+type ClassroomDate = { year?: number; month?: number; day?: number };
+type ClassroomTime = { hours?: number; minutes?: number };
+type RawAssignment = Omit<ClassroomAssignment, "courseId" | "dueDate" | "dueTime"> & { dueDate?: ClassroomDate; dueTime?: ClassroomTime };
 type CoursesResponse = { courses?: ClassroomCourse[]; nextPageToken?: string };
-type WorkResponse = { courseWork?: ClassroomAssignment[]; nextPageToken?: string };
+type WorkResponse = { courseWork?: RawAssignment[]; nextPageToken?: string };
+type BatchOp = { ref: DocumentReference; data?: Record<string, unknown>; remove?: boolean };
 
 function provider() {
   const p = new GoogleAuthProvider();
@@ -64,7 +67,7 @@ async function allCourses(token: string) {
 }
 
 async function allWork(courseId: string, token: string) {
-  const work: ClassroomAssignment[] = [];
+  const work: RawAssignment[] = [];
   let pageToken = "";
   do {
     const qs = new URLSearchParams({ courseWorkStates: "PUBLISHED", orderBy: "dueDate desc", pageSize: "100" });
@@ -76,9 +79,22 @@ async function allWork(courseId: string, token: string) {
   return work;
 }
 
-function dueDate(value?: { year?: number; month?: number; day?: number }) {
+function formatDate(value?: ClassroomDate) {
   if (!value?.year || !value.month || !value.day) return "";
   return `${value.year}-${String(value.month).padStart(2, "0")}-${String(value.day).padStart(2, "0")}`;
+}
+
+function formatTime(value?: ClassroomTime) {
+  if (!value) return "";
+  return `${String(value.hours || 0).padStart(2, "0")}:${String(value.minutes || 0).padStart(2, "0")}`;
+}
+
+async function commitInChunks(ops: BatchOp[]) {
+  for (let i = 0; i < ops.length; i += 400) {
+    const batch = writeBatch(db);
+    ops.slice(i, i + 400).forEach(op => op.remove ? batch.delete(op.ref) : batch.set(op.ref, op.data || {}));
+    await batch.commit();
+  }
 }
 
 export async function syncClassroom(user: User) {
@@ -90,14 +106,14 @@ export async function syncClassroom(user: User) {
   const courses = await allCourses(token);
   const assignments = (await Promise.all(courses.map(async course => {
     const items = await allWork(course.id, token);
-    return items.map((item: any) => ({
+    return items.map(item => ({
       id: item.id,
       courseId: course.id,
       title: item.title,
       description: item.description || "",
       alternateLink: item.alternateLink || "",
-      dueDate: dueDate(item.dueDate),
-      dueTime: item.dueTime ? `${String(item.dueTime.hours || 0).padStart(2,"0")}:${String(item.dueTime.minutes || 0).padStart(2,"0")}` : "",
+      dueDate: formatDate(item.dueDate),
+      dueTime: formatTime(item.dueTime),
       state: item.state || "",
     } satisfies ClassroomAssignment));
   }))).flat();
@@ -106,19 +122,20 @@ export async function syncClassroom(user: User) {
   const assignmentRef = collection(db, "users", user.uid, "classroomAssignments");
   const [oldCourses, oldAssignments] = await Promise.all([getDocs(courseRef), getDocs(assignmentRef)]);
 
-  const cleanup = writeBatch(db);
-  oldCourses.docs.forEach(d => cleanup.delete(d.ref));
-  oldAssignments.docs.forEach(d => cleanup.delete(d.ref));
-  await cleanup.commit();
+  await commitInChunks([
+    ...oldCourses.docs.map(item => ({ ref: item.ref, remove: true })),
+    ...oldAssignments.docs.map(item => ({ ref: item.ref, remove: true })),
+  ]);
 
-  const batch = writeBatch(db);
-  courses.forEach(course => batch.set(doc(courseRef, course.id), course));
-  assignments.forEach(item => batch.set(doc(assignmentRef, `${item.courseId}_${item.id}`), item));
-  batch.set(doc(db, "users", user.uid), {
+  await commitInChunks([
+    ...courses.map(course => ({ ref: doc(courseRef, course.id), data: course as Record<string, unknown> })),
+    ...assignments.map(item => ({ ref: doc(assignmentRef, `${item.courseId}_${item.id}`), data: item as Record<string, unknown> })),
+  ]);
+
+  await setDoc(doc(db, "users", user.uid), {
     classroomConnected: true,
     classroomLastSync: serverTimestamp(),
   }, { merge: true });
-  await batch.commit();
 
   return { courses, assignments };
 }
@@ -128,6 +145,9 @@ export async function disconnectClassroom(user: User) {
     getDocs(collection(db, "users", user.uid, "classroomCourses")),
     getDocs(collection(db, "users", user.uid, "classroomAssignments")),
   ]);
-  await Promise.all([...courses.docs, ...assignments.docs].map(d => deleteDoc(d.ref)));
+  await commitInChunks([
+    ...courses.docs.map(item => ({ ref: item.ref, remove: true })),
+    ...assignments.docs.map(item => ({ ref: item.ref, remove: true })),
+  ]);
   await setDoc(doc(db, "users", user.uid), { classroomConnected: false, classroomLastSync: null }, { merge: true });
 }
