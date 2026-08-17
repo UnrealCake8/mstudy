@@ -4,14 +4,14 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { signOut } from "firebase/auth";
-import { CalendarDays, CheckSquare, Clock3, Home, LogOut, NotebookPen, Settings } from "lucide-react";
+import { CalendarDays, CheckSquare, Clock3, GraduationCap, Home, LogOut, NotebookPen, Settings } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { useAuth } from "@/components/auth/auth-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 const nav = [
   ["/", "Home", Home], ["/homework", "Homework", CheckSquare], ["/timetable", "Timetable", Clock3],
-  ["/notes", "Notes", NotebookPen], ["/events", "Events", CalendarDays], ["/settings", "Settings", Settings],
+  ["/notes", "Notes", NotebookPen], ["/events", "Events", CalendarDays], ["/classroom", "Classroom", GraduationCap], ["/settings", "Settings", Settings],
 ] as const;
 
 export function AppShell({ children }: { children: React.ReactNode }) {
