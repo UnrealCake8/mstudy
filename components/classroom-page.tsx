@@ -20,8 +20,10 @@ export function ClassroomPage() {
 
   useEffect(() => {
     if (!user) return;
-    const stopCourses = subscribeCollection<ClassroomCourse>(user.uid, "classroomCourses", setCourses);
-    const stopAssignments = subscribeCollection<ClassroomAssignment>(user.uid, "classroomAssignments", setAssignments);
+    // Classroom documents come from Google and do not have MStudy's createdAt field.
+    // Reading them with orderBy("createdAt") causes Firestore to exclude every document.
+    const stopCourses = subscribeCollection<ClassroomCourse>(user.uid, "classroomCourses", setCourses, { orderByCreatedAt: false });
+    const stopAssignments = subscribeCollection<ClassroomAssignment>(user.uid, "classroomAssignments", setAssignments, { orderByCreatedAt: false });
     const stopProfile = onSnapshot(doc(db, "users", user.uid), snapshot => {
       const data = snapshot.data();
       setConnected(Boolean(data?.classroomConnected));
