@@ -8,7 +8,7 @@ const CLASSROOM_SCOPES = [
   "https://www.googleapis.com/auth/classroom.courses.readonly",
   "https://www.googleapis.com/auth/classroom.coursework.me.readonly",
   "https://www.googleapis.com/auth/classroom.coursework.students.readonly",
-  "https://www.googleapis.com/auth/drive.readonly",
+  "https://www.googleapis.com/auth/drive.file",
   "https://www.googleapis.com/auth/classroom.courseworkmaterials.readonly",
 ] as const;
 
@@ -149,6 +149,8 @@ async function enrichDriveMaterial(material: ClassroomMaterial, token: string): 
 }
 
 async function enrichMaterials(materials: ClassroomMaterial[], token: string) {
+  // drive.file only exposes files the user has explicitly granted to MStudy.
+  // Classroom attachment metadata is still synced even when Drive file content is unavailable.
   return Promise.all(materials.map(material => enrichDriveMaterial(material, token)));
 }
 
