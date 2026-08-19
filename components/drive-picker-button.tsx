@@ -16,8 +16,10 @@ export function DrivePickerButton() {
     setMessage(null);
     try {
       const result = await authorizeClassroomDriveFile(user);
-      if (!result.matched) {
-        setMessage(`“${result.fileName}” was authorized, but it is not attached to any synced Classroom assignment or class material.`);
+      if (!result.matched && result.readable) {
+        setMessage(`“${result.fileName}” is authorized and readable. You can use it as a Drive study file even though it is not attached to Classroom.`);
+      } else if (!result.matched) {
+        setMessage(`“${result.fileName}” is authorized. It is not attached to Classroom, but MStudy can still use supported Drive files directly.`);
       } else if (result.readable) {
         setMessage(`“${result.fileName}” is authorized and its text is ready for Study Games.`);
       } else {
@@ -33,7 +35,7 @@ export function DrivePickerButton() {
 
   return <div className="drive-picker-action">
     <button className="secondary-button" onClick={authorize} disabled={busy}>
-      <FolderOpen size={16}/>{busy ? "Opening Drive…" : "Authorize Classroom file"}
+      <FolderOpen size={16}/>{busy ? "Opening Drive…" : "Authorise Drive file"}
     </button>
     {message ? <small className="section-help">{message}</small> : null}
   </div>;
