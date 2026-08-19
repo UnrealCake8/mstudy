@@ -22,6 +22,17 @@ type AuthorizationResult = {
   source: "assignment" | "resource" | null;
 };
 
+const PICKER_MIME_TYPES = [
+  "application/pdf",
+  "application/vnd.google-apps.document",
+  "application/vnd.google-apps.presentation",
+  "application/vnd.google-apps.spreadsheet",
+  "text/plain",
+  "text/markdown",
+  "text/csv",
+  "application/json",
+].join(",");
+
 function pickerConfig() {
   const developerKey = process.env.NEXT_PUBLIC_GOOGLE_PICKER_API_KEY || process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
   const appId = process.env.NEXT_PUBLIC_GOOGLE_CLOUD_PROJECT_NUMBER || process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID;
@@ -129,6 +140,7 @@ async function pickFile(token: string): Promise<PickedFile> {
     const view = new google.picker.DocsView(google.picker.ViewId.DOCS);
     view.setIncludeFolders(false);
     view.setSelectFolderEnabled(false);
+    view.setMimeTypes(PICKER_MIME_TYPES);
 
     const picker = new google.picker.PickerBuilder()
       .addView(view)
@@ -136,7 +148,7 @@ async function pickFile(token: string): Promise<PickedFile> {
       .setDeveloperKey(developerKey)
       .setAppId(appId)
       .setOrigin(window.location.origin)
-      .setTitle("Choose the Classroom file to use")
+      .setTitle("Choose a study file from Classroom")
       .setCallback((data: any) => {
         if (data.action === google.picker.Action.CANCEL) {
           reject(new Error("File selection was cancelled."));
@@ -146,10 +158,15 @@ async function pickFile(token: string): Promise<PickedFile> {
         const picked = data[google.picker.Response.DOCUMENTS]?.[0];
         const id = picked?.[google.picker.Document.ID];
         if (!id) return reject(new Error("Google Picker did not return a file."));
+        const mimeType = picked?.[google.picker.Document.MIME_TYPE] || "";
+        if (mimeType.startsWith("image/")) {
+          reject(new Error("Images are ignored for study material. Choose a PDF, Google Doc, Slides, Sheet, or text file."));
+          return;
+        }
         resolve({
           id,
           name: picked?.[google.picker.Document.NAME] || "Drive file",
-          mimeType: picked?.[google.picker.Document.MIME_TYPE],
+          mimeType,
           url: picked?.[google.picker.Document.URL],
         });
       })
@@ -171,11 +188,13 @@ async function readSelectedFile(file: PickedFile, token: string): Promise<Classr
 
   let meta: { id?: string; name?: string; mimeType?: string; webViewLink?: string; size?: string } = {};
   const metaResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(file.id)}?fields=id,name,mimeType,webViewLink,size&supportsAllDrives=true`, { headers });
-  if (metaResponse.ok) {
-    meta = await metaResponse.json();
-  }
+  if (metaResponse.ok) meta = await metaResponse.json();
 
   const mimeType = meta.mimeType || file.mimeType || "";
+  if (mimeType.startsWith("image/")) {
+    throw new Error("Images are ignored for study material. Attach a PDF, Google Doc, Slides, Sheet, or text file instead.");
+  }
+
   const material: ClassroomMaterial = {
     type: "drive",
     id: file.id,
@@ -194,6 +213,7 @@ async function readSelectedFile(file: PickedFile, token: string): Promise<Classr
       throw new Error(`MStudy could not download that PDF from Drive. ${detail}`);
     }
 
+    // PDF.js reads only the text layer here. Embedded pictures, diagrams and decorative images are ignored.
     const text = await extractPdfText(await response.arrayBuffer());
     if (!text) throw new Error("MStudy opened the PDF, but could not find selectable text in it. It may be a scanned/image-only PDF.");
     material.extractedText = text;
