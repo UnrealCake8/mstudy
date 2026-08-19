@@ -48,14 +48,17 @@ export async function POST(request: Request) {
 
   const material = text.slice(0, 24000);
   const prompt = [
-    `Title: ${body?.title || "Study challenge"}`,
-    `Subject: ${body?.subject || "General"}`,
-    "Create 6 to 10 accurate multiple-choice study questions using ONLY the study material below.",
-    "Questions should test understanding rather than obscure wording. Avoid trick questions.",
+    "You are generating revision questions from extracted study-document content.",
+    `Display title (metadata only): ${body?.title || "Study challenge"}`,
+    `Subject label (metadata only): ${body?.subject || "General"}`,
+    "Create 6 to 10 accurate multiple-choice questions using ONLY facts, ideas, arguments, definitions, examples, or explanations contained in STUDY CONTENT below.",
+    "IMPORTANT: The display title, filename, class name, course name, subject label, source type, and attachment name are NOT study facts. Never ask the student to identify, recall, or reason about those labels unless that information is explicitly stated as part of the study content itself.",
+    "Questions should test understanding of the actual document content, not metadata or formatting.",
+    "Prefer meaningful comprehension questions over fill-in-the-blank wording when the content supports them.",
     "Each question must have exactly four distinct choices. The answer must exactly match one of the choices.",
-    "Explanations should be short, useful, and grounded in the supplied material.",
-    "Do not invent facts that are not supported by the material.",
-    "Study material:",
+    "Explanations should be short, useful, and grounded directly in the study content.",
+    "Do not invent facts that are not supported by the study content.",
+    "STUDY CONTENT:",
     material,
   ].join("\n\n");
 
