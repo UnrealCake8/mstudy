@@ -9,6 +9,7 @@ declare global {
   interface Window {
     gapi?: { load: (name: string, callback: () => void) => void };
     google?: any;
+    pdfjsLib?: any;
   }
 }
 
@@ -56,6 +57,57 @@ function loadPickerApi() {
     script.onerror = () => reject(new Error("Google Picker could not be loaded."));
     document.head.appendChild(script);
   });
+}
+
+function loadPdfJs() {
+  if (typeof window === "undefined") return Promise.reject(new Error("PDF reading only works in the browser."));
+  if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+
+  return new Promise<any>((resolve, reject) => {
+    const ready = () => {
+      if (!window.pdfjsLib) return reject(new Error("PDF reader could not start."));
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+      resolve(window.pdfjsLib);
+    };
+
+    const existing = document.querySelector<HTMLScriptElement>('script[data-mstudy-pdfjs="true"]');
+    if (existing) {
+      if (window.pdfjsLib) ready();
+      else existing.addEventListener("load", ready, { once: true });
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+    script.async = true;
+    script.defer = true;
+    script.dataset.mstudyPdfjs = "true";
+    script.onload = ready;
+    script.onerror = () => reject(new Error("MStudy could not load its PDF reader."));
+    document.head.appendChild(script);
+  });
+}
+
+async function extractPdfText(buffer: ArrayBuffer) {
+  const pdfjs = await loadPdfJs();
+  const pdf = await pdfjs.getDocument({ data: new Uint8Array(buffer) }).promise;
+  const chunks: string[] = [];
+  const pageLimit = Math.min(pdf.numPages, 80);
+
+  for (let pageNumber = 1; pageNumber <= pageLimit; pageNumber += 1) {
+    const page = await pdf.getPage(pageNumber);
+    const content = await page.getTextContent();
+    const line = content.items
+      .map((item: any) => typeof item?.str === "string" ? item.str : "")
+      .filter(Boolean)
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (line) chunks.push(line);
+    if (chunks.join("\n\n").length >= 40000) break;
+  }
+
+  return chunks.join("\n\n").slice(0, 40000).trim();
 }
 
 async function driveToken(user: User) {
@@ -109,9 +161,9 @@ async function pickFile(token: string): Promise<PickedFile> {
 
 async function readSelectedFile(file: PickedFile, token: string): Promise<ClassroomMaterial> {
   const headers = { Authorization: `Bearer ${token}` };
-  const metaResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(file.id)}?fields=id,name,mimeType,webViewLink&supportsAllDrives=true`, { headers });
+  const metaResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(file.id)}?fields=id,name,mimeType,webViewLink,size&supportsAllDrives=true`, { headers });
   if (!metaResponse.ok) throw new Error("MStudy could not open that Drive file.");
-  const meta = await metaResponse.json() as { id?: string; name?: string; mimeType?: string; webViewLink?: string };
+  const meta = await metaResponse.json() as { id?: string; name?: string; mimeType?: string; webViewLink?: string; size?: string };
   const mimeType = meta.mimeType || file.mimeType || "";
   const material: ClassroomMaterial = {
     type: "drive",
@@ -120,6 +172,17 @@ async function readSelectedFile(file: PickedFile, token: string): Promise<Classr
     url: meta.webViewLink || file.url,
     mimeType,
   };
+
+  if (mimeType === "application/pdf") {
+    const size = Number(meta.size || 0);
+    if (size && size > 25_000_000) throw new Error("That PDF is too large for MStudy right now. Try a PDF under 25 MB.");
+    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(file.id)}?alt=media`, { headers });
+    if (!response.ok) throw new Error("MStudy could not download that PDF from Drive.");
+    const text = await extractPdfText(await response.arrayBuffer());
+    if (!text) throw new Error("MStudy opened the PDF, but could not find selectable text in it. It may be a scanned/image-only PDF.");
+    material.extractedText = text;
+    return material;
+  }
 
   let textResponse: Response | null = null;
   if (mimeType === "application/vnd.google-apps.document" || mimeType === "application/vnd.google-apps.presentation") {
