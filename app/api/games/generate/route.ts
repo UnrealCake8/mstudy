@@ -18,17 +18,17 @@ const schema = {
         type: "object",
         additionalProperties: false,
         properties: {
+          type: { type: "string", enum: ["mcq", "written"] },
           prompt: { type: "string" },
           choices: {
             type: "array",
-            minItems: 4,
             maxItems: 4,
             items: { type: "string" },
           },
           answer: { type: "string" },
           explanation: { type: "string" },
         },
-        required: ["prompt", "choices", "answer", "explanation"],
+        required: ["type", "prompt", "choices", "answer", "explanation"],
       },
     },
   },
@@ -51,11 +51,14 @@ export async function POST(request: Request) {
     "You are generating revision questions from extracted study-document content.",
     `Display title (metadata only): ${body?.title || "Study challenge"}`,
     `Subject label (metadata only): ${body?.subject || "General"}`,
-    "Create 6 to 10 accurate multiple-choice questions using ONLY facts, ideas, arguments, definitions, examples, or explanations contained in STUDY CONTENT below.",
-    "IMPORTANT: The display title, filename, class name, course name, subject label, source type, and attachment name are NOT study facts. Never ask the student to identify, recall, or reason about those labels unless that information is explicitly stated as part of the study content itself.",
+    "Create 6 to 10 accurate revision questions using ONLY facts, ideas, arguments, definitions, examples, or explanations contained in STUDY CONTENT below.",
+    "Use a useful mix of multiple-choice and written free-response questions. Aim for roughly half written questions when the material supports it.",
+    "For type=mcq: provide exactly four distinct choices and make answer exactly match one choice.",
+    "For type=written: choices MUST be an empty array. The answer should be a concise model answer containing the key facts a student should mention.",
+    "Written questions should usually be answerable in one or two sentences, not essays.",
+    "IMPORTANT: The display title, filename, class name, course name, subject label, source type, and attachment name are NOT study facts. Never ask about those labels unless explicitly stated in the study content itself.",
     "Questions should test understanding of the actual document content, not metadata or formatting.",
     "Prefer meaningful comprehension questions over fill-in-the-blank wording when the content supports them.",
-    "Each question must have exactly four distinct choices. The answer must exactly match one of the choices.",
     "Explanations should be short, useful, and grounded directly in the study content.",
     "Do not invent facts that are not supported by the study content.",
     "STUDY CONTENT:",
@@ -96,10 +99,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "OpenAI returned no usable question set." }, { status: 502 });
     }
 
-    const parsed = JSON.parse(outputText) as { questions?: unknown[] };
+    const parsed = JSON.parse(outputText) as { questions?: Array<{ type?: string; choices?: string[] }> };
     if (!Array.isArray(parsed.questions) || parsed.questions.length < 4) {
       return NextResponse.json({ error: "OpenAI returned an incomplete question set." }, { status: 502 });
     }
+
+    parsed.questions = parsed.questions.map(question => {
+      if (question.type === "written") return { ...question, choices: [] };
+      return { ...question, type: "mcq", choices: Array.isArray(question.choices) ? question.choices.slice(0, 4) : [] };
+    });
 
     return NextResponse.json(parsed);
   } catch (error) {
