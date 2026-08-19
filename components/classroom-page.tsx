@@ -1,8 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
-import { CalendarClock, ExternalLink, GraduationCap, RefreshCw, Unplug } from "lucide-react";
+import { CalendarClock, ExternalLink, Gamepad2, GraduationCap, RefreshCw, Unplug } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { useAuth } from "@/components/auth/auth-provider";
 import { subscribeCollection } from "@/lib/data";
@@ -82,12 +83,14 @@ export function ClassroomPage() {
       <div className="section-row"><h2 className="section-title">Your classes</h2><button className="text-button" onClick={disconnect} disabled={busy}><Unplug size={15}/> Disconnect</button></div>
       {courses.length === 0 ? <div className="empty-state"><strong>No classes found</strong><span>Try syncing again or check that you connected the right Google account.</span></div> : <div className="classroom-course-grid">{courses.map(course => <article className="data-card classroom-course" key={course.id}><div><span className="pill">{course.role === "teacher" ? "Teaching" : "Class"}</span><h2>{course.name}</h2>{course.section ? <p>{course.section}</p> : null}</div>{course.alternateLink ? <a className="icon-button" href={course.alternateLink} target="_blank" rel="noreferrer" aria-label={`Open ${course.name} in Classroom`}><ExternalLink size={17}/></a> : null}</article>)}</div>}
 
-      <div className="section-row assignment-heading"><div><h2 className="section-title">To do</h2><p className="section-help">Completed Classroom work disappears after you sync.</p></div></div>
+      <div className="section-row assignment-heading"><div><h2 className="section-title">To do</h2><p className="section-help">Completed Classroom work disappears after you sync. Assignments with useful instructions can also become study games.</p></div></div>
       {sorted.length === 0 ? <div className="empty-state"><strong>You’re caught up</strong><span>No unfinished Classroom assignments right now.</span></div> : <div className="classroom-assignment-list">{sorted.map(item => {
         const due = friendlyDueDate(item.dueDate,item.dueTime);
         return <article className="classroom-assignment" key={`${item.courseId}_${item.id}`}>
           <div className="assignment-main"><span className="assignment-course">{courseNames.get(item.courseId) || "Class"}</span><h3>{item.title}</h3>{item.description ? <p>{item.description}</p> : null}</div>
-          <div className="assignment-side">{due ? <div className="due-date"><CalendarClock size={16}/><span><small>Due</small>{due}</span></div> : <span className="no-due">No due date</span>}{item.alternateLink ? <a className="primary-button assignment-open" href={item.alternateLink} target="_blank" rel="noreferrer">Open <ExternalLink size={14}/></a> : null}</div>
+          <div className="assignment-side">{due ? <div className="due-date"><CalendarClock size={16}/><span><small>Due</small>{due}</span></div> : <span className="no-due">No due date</span>}
+            <div className="assignment-actions"><Link className="secondary-button assignment-open" href={`/play?course=${encodeURIComponent(item.courseId)}&assignment=${encodeURIComponent(item.id)}`}><Gamepad2 size={14}/> Play</Link>{item.alternateLink ? <a className="primary-button assignment-open" href={item.alternateLink} target="_blank" rel="noreferrer">Open <ExternalLink size={14}/></a> : null}</div>
+          </div>
         </article>;
       })}</div>}
     </>}
