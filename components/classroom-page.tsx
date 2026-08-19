@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
 import { CalendarClock, ExternalLink, FileText, Gamepad2, GraduationCap, RefreshCw, Unplug } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
+import { DrivePickerButton } from "@/components/drive-picker-button";
 import { useAuth } from "@/components/auth/auth-provider";
 import { subscribeCollection } from "@/lib/data";
 import { db } from "@/lib/firebase";
@@ -71,7 +72,10 @@ export function ClassroomPage() {
   return <AppShell><section className="page">
     <div className="page-head">
       <div><p className="eyebrow">Connected school tools</p><h1>Google Classroom</h1><p>Assignments and class resources can feed directly into Study Games.</p></div>
-      <button className="primary-button" onClick={connect} disabled={busy}><RefreshCw size={17}/>{busy ? "Syncing…" : connected ? "Sync Classroom" : "Connect Classroom"}</button>
+      <div className="form-actions">
+        {connected ? <DrivePickerButton /> : null}
+        <button className="primary-button" onClick={connect} disabled={busy}><RefreshCw size={17}/>{busy ? "Syncing…" : connected ? "Sync Classroom" : "Connect Classroom"}</button>
+      </div>
     </div>
 
     {error ? <div className="notice error-notice">{error}</div> : null}
@@ -82,15 +86,17 @@ export function ClassroomPage() {
       <div><h2>Connect Google Classroom</h2><p>Sync assignments, revision resources and attached Drive material into MStudy.</p></div>
       <button className="primary-button" onClick={connect} disabled={busy}>{busy ? "Connecting…" : "Connect Classroom"}</button>
     </div> : <>
+      <div className="notice"><strong>Drive file access is per-file.</strong> Use <em>Authorize Classroom file</em>, choose the exact teacher file from Google Drive, and MStudy will match it to the synced assignment or class material. This keeps Drive access limited to files you explicitly choose.</div>
+
       <div className="section-row"><h2 className="section-title">Your classes</h2><button className="text-button" onClick={disconnect} disabled={busy}><Unplug size={15}/> Disconnect</button></div>
       {courses.length === 0 ? <div className="empty-state"><strong>No classes found</strong><span>Try syncing again or check that you connected the right Google account.</span></div> : <div className="classroom-course-grid">{courses.map(course => <article className="data-card classroom-course" key={course.id}><div><span className="pill">{course.role === "teacher" ? "Teaching" : "Class"}</span><h2>{course.name}</h2>{course.section ? <p>{course.section}</p> : null}</div>{course.alternateLink ? <a className="icon-button" href={course.alternateLink} target="_blank" rel="noreferrer" aria-label={`Open ${course.name} in Classroom`}><ExternalLink size={17}/></a> : null}</article>)}</div>}
 
-      <div className="section-row assignment-heading"><div><h2 className="section-title">To do</h2><p className="section-help">Completed Classroom work disappears after you sync. Assignments can use readable Drive attachments as game material.</p></div></div>
+      <div className="section-row assignment-heading"><div><h2 className="section-title">To do</h2><p className="section-help">Completed Classroom work disappears after you sync. Assignments can use explicitly authorized Drive attachments as game material.</p></div></div>
       {sorted.length === 0 ? <div className="empty-state"><strong>You’re caught up</strong><span>No unfinished Classroom assignments right now.</span></div> : <div className="classroom-assignment-list">{sorted.map(item => {
         const due = friendlyDueDate(item.dueDate,item.dueTime);
         const readable = item.materials?.filter(material => material.extractedText).length || 0;
         return <article className="classroom-assignment" key={`${item.courseId}_${item.id}`}>
-          <div className="assignment-main"><span className="assignment-course">{courseNames.get(item.courseId) || "Class"}</span><h3>{item.title}</h3>{item.description ? <p>{item.description}</p> : null}{item.materials?.length ? <p className="section-help"><FileText size={14}/> {item.materials.length} attachment{item.materials.length===1?"":"s"}{readable ? ` · ${readable} readable` : ""}</p> : null}</div>
+          <div className="assignment-main"><span className="assignment-course">{courseNames.get(item.courseId) || "Class"}</span><h3>{item.title}</h3>{item.description ? <p>{item.description}</p> : null}{item.materials?.length ? <p className="section-help"><FileText size={14}/> {item.materials.length} attachment{item.materials.length===1?"":"s"}{readable ? ` · ${readable} ready for games` : " · authorize a file to read it"}</p> : null}</div>
           <div className="assignment-side">{due ? <div className="due-date"><CalendarClock size={16}/><span><small>Due</small>{due}</span></div> : <span className="no-due">No due date</span>}
             <div className="assignment-actions"><Link className="secondary-button assignment-open" href={`/play?course=${encodeURIComponent(item.courseId)}&assignment=${encodeURIComponent(item.id)}`}><Gamepad2 size={14}/> Play</Link>{item.alternateLink ? <a className="primary-button assignment-open" href={item.alternateLink} target="_blank" rel="noreferrer">Open <ExternalLink size={14}/></a> : null}</div>
           </div>
@@ -98,10 +104,10 @@ export function ClassroomPage() {
       })}</div>}
 
       <div className="section-row assignment-heading"><div><h2 className="section-title">Class materials</h2><p className="section-help">Revision sheets, slides, documents and resources posted by teachers outside assignments.</p></div></div>
-      {resources.length === 0 ? <div className="empty-state"><strong>No class materials found</strong><span>Sync again after granting the coursework materials and Drive read-only scopes.</span></div> : <div className="classroom-assignment-list">{resources.map(item => {
+      {resources.length === 0 ? <div className="empty-state"><strong>No class materials found</strong><span>Sync again after granting the coursework materials scope.</span></div> : <div className="classroom-assignment-list">{resources.map(item => {
         const readable = item.materials?.filter(material => material.extractedText).length || 0;
         return <article className="classroom-assignment" key={`${item.courseId}_${item.id}`}>
-          <div className="assignment-main"><span className="assignment-course">{courseNames.get(item.courseId) || "Class"}</span><h3>{item.title}</h3>{item.description ? <p>{item.description}</p> : null}{item.materials?.length ? <p className="section-help"><FileText size={14}/> {item.materials.length} resource{item.materials.length===1?"":"s"}{readable ? ` · ${readable} readable` : ""}</p> : null}</div>
+          <div className="assignment-main"><span className="assignment-course">{courseNames.get(item.courseId) || "Class"}</span><h3>{item.title}</h3>{item.description ? <p>{item.description}</p> : null}{item.materials?.length ? <p className="section-help"><FileText size={14}/> {item.materials.length} resource{item.materials.length===1?"":"s"}{readable ? ` · ${readable} ready for games` : " · authorize a file to read it"}</p> : null}</div>
           <div className="assignment-side"><div className="assignment-actions"><Link className="secondary-button assignment-open" href={`/play?course=${encodeURIComponent(item.courseId)}&resource=${encodeURIComponent(item.id)}`}><Gamepad2 size={14}/> Play</Link>{item.alternateLink ? <a className="primary-button assignment-open" href={item.alternateLink} target="_blank" rel="noreferrer">Open <ExternalLink size={14}/></a> : null}</div></div>
         </article>;
       })}</div>}
