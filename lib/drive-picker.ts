@@ -159,11 +159,22 @@ async function pickFile(token: string): Promise<PickedFile> {
   });
 }
 
+async function googleError(response: Response) {
+  const body = await response.json().catch(() => null) as { error?: { message?: string; errors?: { reason?: string }[] } } | null;
+  const reason = body?.error?.errors?.[0]?.reason;
+  const message = body?.error?.message;
+  return [message, reason].filter(Boolean).join(" · ") || `Google Drive returned ${response.status}.`;
+}
+
 async function readSelectedFile(file: PickedFile, token: string): Promise<ClassroomMaterial> {
   const headers = { Authorization: `Bearer ${token}` };
+
+  let meta: { id?: string; name?: string; mimeType?: string; webViewLink?: string; size?: string } = {};
   const metaResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(file.id)}?fields=id,name,mimeType,webViewLink,size&supportsAllDrives=true`, { headers });
-  if (!metaResponse.ok) throw new Error("MStudy could not open that Drive file.");
-  const meta = await metaResponse.json() as { id?: string; name?: string; mimeType?: string; webViewLink?: string; size?: string };
+  if (metaResponse.ok) {
+    meta = await metaResponse.json();
+  }
+
   const mimeType = meta.mimeType || file.mimeType || "";
   const material: ClassroomMaterial = {
     type: "drive",
@@ -176,12 +187,22 @@ async function readSelectedFile(file: PickedFile, token: string): Promise<Classr
   if (mimeType === "application/pdf") {
     const size = Number(meta.size || 0);
     if (size && size > 25_000_000) throw new Error("That PDF is too large for MStudy right now. Try a PDF under 25 MB.");
-    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(file.id)}?alt=media`, { headers });
-    if (!response.ok) throw new Error("MStudy could not download that PDF from Drive.");
+
+    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(file.id)}?alt=media&supportsAllDrives=true`, { headers });
+    if (!response.ok) {
+      const detail = await googleError(response);
+      throw new Error(`MStudy could not download that PDF from Drive. ${detail}`);
+    }
+
     const text = await extractPdfText(await response.arrayBuffer());
     if (!text) throw new Error("MStudy opened the PDF, but could not find selectable text in it. It may be a scanned/image-only PDF.");
     material.extractedText = text;
     return material;
+  }
+
+  if (!metaResponse.ok) {
+    const detail = await googleError(metaResponse);
+    throw new Error(`MStudy could not open that Drive file. ${detail}`);
   }
 
   let textResponse: Response | null = null;
@@ -190,7 +211,12 @@ async function readSelectedFile(file: PickedFile, token: string): Promise<Classr
   } else if (mimeType === "application/vnd.google-apps.spreadsheet") {
     textResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(file.id)}/export?mimeType=${encodeURIComponent("text/csv")}`, { headers });
   } else if (["text/plain", "text/markdown", "text/csv", "application/json"].includes(mimeType)) {
-    textResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(file.id)}?alt=media`, { headers });
+    textResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(file.id)}?alt=media&supportsAllDrives=true`, { headers });
+  }
+
+  if (textResponse && !textResponse.ok) {
+    const detail = await googleError(textResponse);
+    throw new Error(`MStudy could not read that Drive file. ${detail}`);
   }
 
   if (textResponse?.ok) {
