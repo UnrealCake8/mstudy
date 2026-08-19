@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { FileText, Plus, Search, Trash2 } from "lucide-react";
+import { FileText, Gamepad2, Plus, Search, Trash2 } from "lucide-react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { addItem, deleteItem, subscribeCollection } from "@/lib/data";
 
@@ -30,7 +31,6 @@ export function CollectionPage({ kind }: { kind: Kind }) {
     e.currentTarget.reset(); setOpen(false); setBusy(false);
   }
 
-  const title=kind==="notes"?"Notes":"Events";
   const visible=useMemo(()=>{
     if(kind!=="notes"||!search.trim()) return items;
     const q=search.toLowerCase();
@@ -39,7 +39,7 @@ export function CollectionPage({ kind }: { kind: Kind }) {
 
   if(kind==="notes") return <section className="page">
     <div className="page-head">
-      <div><p className="eyebrow">Study notebook</p><h1>Notes</h1><p>Save what matters from each lesson and find it again quickly.</p></div>
+      <div><p className="eyebrow">Study notebook</p><h1>Notes</h1><p>Save what matters from each lesson and turn it into something you can actually play.</p></div>
       <button className="primary-button" onClick={()=>setOpen(v=>!v)}><Plus size={17}/> New note</button>
     </div>
 
@@ -55,7 +55,7 @@ export function CollectionPage({ kind }: { kind: Kind }) {
       <div className="form-actions"><button type="button" className="secondary-button" onClick={()=>setOpen(false)}>Cancel</button><button className="primary-button" disabled={busy}>{busy?"Saving…":"Save note"}</button></div>
     </form>}
 
-    {visible.length===0?<div className="empty-state notes-empty"><FileText size={24}/><strong>{search?"No matching notes":"No notes yet"}</strong><span>{search?"Try another subject or keyword.":"Create a note after a lesson, revision session or homework task."}</span></div>:<div className="notes-grid">{visible.map(i=><article className="note-card" key={i.id}><div className="note-card-top"><span className="pill">{i.subject||"General"}</span><button className="icon-button danger" aria-label={`Delete ${i.title}`} onClick={()=>user&&deleteItem(user.uid,kind,i.id)}><Trash2 size={17}/></button></div><h2>{i.title}</h2>{i.content?<p>{i.content}</p>:<p className="muted-copy">No note text yet.</p>}</article>)}</div>}
+    {visible.length===0?<div className="empty-state notes-empty"><FileText size={24}/><strong>{search?"No matching notes":"No notes yet"}</strong><span>{search?"Try another subject or keyword.":"Create a note after a lesson, revision session or homework task."}</span></div>:<div className="notes-grid">{visible.map(i=><article className="note-card" key={i.id}><div className="note-card-top"><span className="pill">{i.subject||"General"}</span><button className="icon-button danger" aria-label={`Delete ${i.title}`} onClick={()=>user&&deleteItem(user.uid,kind,i.id)}><Trash2 size={17}/></button></div><h2>{i.title}</h2>{i.content?<p>{i.content}</p>:<p className="muted-copy">No note text yet.</p>}<div className="note-actions"><Link className="secondary-button note-play-button" href={`/play?note=${encodeURIComponent(i.id)}`}><Gamepad2 size={17}/> Play this note</Link></div></article>)}</div>}
   </section>;
 
   return <section className="page"><div className="page-head"><div><p className="eyebrow">Calendar</p><h1>Events</h1><p>Keep track of exams, school events and important dates.</p></div><button className="primary-button" onClick={()=>setOpen(v=>!v)}><Plus size={17}/> Add event</button></div>
