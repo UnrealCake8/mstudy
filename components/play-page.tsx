@@ -1,10 +1,11 @@
 "use client";
 
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
-import { BookOpen, Bot, ExternalLink, FileText, FolderOpen, Gamepad2, GraduationCap, Heart, ImagePlus, Play, RotateCcw, Sparkles, Swords, Trophy, WandSparkles, X } from "lucide-react";
+import { BookOpen, Bot, Download, ExternalLink, FileText, FolderOpen, Gamepad2, GraduationCap, Heart, ImagePlus, Play, RotateCcw, Sparkles, Swords, Trophy, WandSparkles, X } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/auth/auth-provider";
 import { addItem, Note, subscribeCollection } from "@/lib/data";
+import { exportQuestionsPdf } from "@/lib/export-questions-pdf";
 import type { ClassroomAssignment, ClassroomCourse, ClassroomResource } from "@/lib/classroom";
 
 type Question = { id: string; type: "mcq" | "written"; prompt: string; choices: string[]; answer: string; explanation: string };
@@ -13,6 +14,7 @@ type Stage = "setup" | "battle" | "results";
 type SourceKind = "note" | "assignment" | "resource" | "drive" | "text";
 type DriveStudyFile = { id: string; title: string; url?: string; mimeType?: string; extractedText?: string };
 type WrittenGrade = { correct: boolean; feedback: string };
+type AIUsage = { limit: number; used: number; remaining: number };
 
 const BOSS_IMAGE_KEY = "mstudy:boss-image";
 const BOSS_NAME_KEY = "mstudy:boss-name";
@@ -88,7 +90,9 @@ export function PlayPage() {
   const [grading, setGrading] = useState(false);
   const [message, setMessage] = useState("");
   const [building, setBuilding] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [aiEnabled, setAiEnabled] = useState(true);
+  const [aiUsage, setAiUsage] = useState<AIUsage | null>(null);
   const [bossImage, setBossImage] = useState("");
   const [bossName, setBossName] = useState("Revision Boss");
   const savedRun = useRef(false);
@@ -155,18 +159,28 @@ export function PlayPage() {
   async function startGame() {
     if (sourceText.length < 80) { setMessage("MStudy needs actual readable study content. Authorise the Drive file again or choose a source with extracted text."); return; }
     setBuilding(true); setMessage(""); let generated: Question[] = [];
-    if (aiEnabled) {
-      try {
-        const response = await fetch("/api/games/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title, subject, text: sourceText, questionMode }) });
-        const data = await response.json() as { questions?: Omit<Question, "id">[]; error?: string };
+    try {
+      if (aiEnabled) {
+        if (!user) throw new Error("Sign in again before using AI Study Games.");
+        const idToken = await user.getIdToken();
+        const response = await fetch("/api/games/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+          body: JSON.stringify({ title, subject, text: sourceText, questionMode }),
+        });
+        const data = await response.json() as { questions?: Omit<Question, "id">[]; error?: string; usage?: AIUsage };
+        if (data.usage) setAiUsage(data.usage);
         if (!response.ok || !data.questions?.length) throw new Error(data.error || "AI generation failed.");
         generated = data.questions.map((q, i) => ({ ...q, type: q.type === "written" ? "written" : "mcq", choices: q.type === "written" ? [] : q.choices, id: `ai-${i}` }));
-      } catch (error) {
+      } else {
         generated = generateQuestions(sourceText, questionMode);
-        setMessage(`${error instanceof Error ? error.message : "AI generation failed."} Using the built-in generator instead.`);
       }
-    } else generated = generateQuestions(sourceText, questionMode);
-    setBuilding(false);
+    } catch (error) {
+      generated = generateQuestions(sourceText, questionMode);
+      setMessage(`${error instanceof Error ? error.message : "AI generation failed."} Using the built-in generator instead.`);
+    } finally {
+      setBuilding(false);
+    }
     if (generated.length < 4) { setMessage("MStudy could not make enough useful questions from the actual document text. Try another source or a longer file."); return; }
     setQuestions(generated); setIndex(0); setBossHp(1000); setHearts(3); setScore(0); setStreak(0); setCorrectCount(0); setAnsweredCount(0); setPicked(null); setWrittenAnswer(""); setWrittenGrade(null); savedRun.current = false; setStage("battle");
   }
@@ -193,6 +207,19 @@ export function PlayPage() {
   }
   function next() { if (!hasAnswered) return; if (bossHp <= 0 || hearts <= 0 || index >= questions.length - 1) { setStage("results"); return; } setIndex(i => i + 1); setPicked(null); setWrittenAnswer(""); setWrittenGrade(null); }
 
+  async function exportPdf() {
+    if (!questions.length || exportingPdf) return;
+    setExportingPdf(true);
+    setMessage("");
+    try {
+      await exportQuestionsPdf({ title, subject, questions });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "MStudy could not export the PDF.");
+    } finally {
+      setExportingPdf(false);
+    }
+  }
+
   if (stage === "setup") return <section className="page play-page">
     <div className="page-head play-head"><div><p className="eyebrow">Study games</p><h1>Turn revision into a game.</h1><p>Use notes, Drive files, assignments, Classroom materials or pasted text, then customize who you fight.</p></div><div className="play-hero-icon"><Gamepad2 size={34}/></div></div>
     <div className="play-layout">
@@ -205,18 +232,18 @@ export function PlayPage() {
       <article className="play-panel boss-customizer"><div className="form-heading"><ImagePlus size={20}/><div><strong>Customize your boss</strong><span>The image stays in this browser and is not uploaded to MStudy.</span></div></div><div className="boss-preview-row"><div className="boss-preview">{bossImage ? <img src={bossImage} alt="Custom boss"/> : <Swords size={30}/>}</div><div className="boss-fields"><label><span>Boss name</span><input value={bossName} onChange={e => changeBossName(e.target.value)} placeholder="Revision Boss"/></label><div className="boss-buttons"><label className="secondary-button upload-button"><ImagePlus size={16}/> Upload image<input type="file" accept="image/*" onChange={uploadBossImage}/></label>{bossImage ? <button className="secondary-button" onClick={removeBossImage}><X size={16}/> Remove</button> : null}</div></div></div></article>
     </div>
 
-    <div className="game-mode-card"><div className="mode-art"><Swords size={30}/></div><div><span className="pill">Boss Battle</span><h2>{bossName || "Revision Boss"}</h2><p>Choose how you want to be tested, then fight the boss.</p><div className="form-actions"><button className={questionMode === "mcq" ? "primary-button" : "secondary-button"} onClick={() => setQuestionMode("mcq")}>MCQs only</button><button className={questionMode === "written" ? "primary-button" : "secondary-button"} onClick={() => setQuestionMode("written")}>Written only</button><button className={questionMode === "mixed" ? "primary-button" : "secondary-button"} onClick={() => setQuestionMode("mixed")}>Mixed</button></div><label className="ai-toggle"><input type="checkbox" checked={aiEnabled} onChange={e => setAiEnabled(e.target.checked)}/><Bot size={16}/><span><strong>Use OpenAI for better questions</strong><small>{questionMode === "mcq" ? "Generate multiple-choice questions only." : questionMode === "written" ? "Generate written questions only and grade answers for meaning." : "Generate a mix of MCQs and written questions."}</small></span></label></div><button className="primary-button game-start" disabled={!sourceText || building} onClick={startGame}><Play size={18}/>{building ? "Building…" : "Build my game"}</button></div>
+    <div className="game-mode-card"><div className="mode-art"><Swords size={30}/></div><div><span className="pill">Boss Battle</span><h2>{bossName || "Revision Boss"}</h2><p>Choose how you want to be tested, then fight the boss.</p><div className="form-actions"><button className={questionMode === "mcq" ? "primary-button" : "secondary-button"} onClick={() => setQuestionMode("mcq")}>MCQs only</button><button className={questionMode === "written" ? "primary-button" : "secondary-button"} onClick={() => setQuestionMode("written")}>Written only</button><button className={questionMode === "mixed" ? "primary-button" : "secondary-button"} onClick={() => setQuestionMode("mixed")}>Mixed</button></div><label className="ai-toggle"><input type="checkbox" checked={aiEnabled} onChange={e => setAiEnabled(e.target.checked)}/><Bot size={16}/><span><strong>Use OpenAI for better questions</strong><small>{questionMode === "mcq" ? "Generate multiple-choice questions only." : questionMode === "written" ? "Generate written questions only and grade answers for meaning." : "Generate a mix of MCQs and written questions."}{aiUsage ? ` ${aiUsage.remaining} of ${aiUsage.limit} AI games remaining today.` : ""}</small></span></label></div><button className="primary-button game-start" disabled={!sourceText || building} onClick={startGame}><Play size={18}/>{building ? "Building…" : "Build my game"}</button></div>
     {message && <p className="game-warning">{message}</p>}
   </section>;
 
   if (stage === "results") {
     const accuracy = answeredCount ? Math.round(correctCount / answeredCount * 100) : 0;
-    return <section className="battle-shell results-shell"><div className="results-card"><Trophy size={48}/><p className="eyebrow">Battle complete</p><h1>{bossHp <= 0 ? `${bossName || "The boss"} defeated!` : hearts <= 0 ? `${bossName || "The boss"} got you this time.` : "Round finished"}</h1><div className="result-stats"><div><strong>{score}</strong><span>Score</span></div><div><strong>{accuracy}%</strong><span>Accuracy</span></div><div><strong>{correctCount}/{answeredCount}</strong><span>Correct</span></div></div><div className="form-actions centered"><button className="secondary-button" onClick={() => { savedRun.current = false; setStage("setup"); }}><BookOpen size={17}/> Change material</button><button className="primary-button" onClick={startGame}><RotateCcw size={17}/> Play again</button></div></div></section>;
+    return <section className="battle-shell results-shell"><div className="results-card"><Trophy size={48}/><p className="eyebrow">Battle complete</p><h1>{bossHp <= 0 ? `${bossName || "The boss"} defeated!` : hearts <= 0 ? `${bossName || "The boss"} got you this time.` : "Round finished"}</h1><div className="result-stats"><div><strong>{score}</strong><span>Score</span></div><div><strong>{accuracy}%</strong><span>Accuracy</span></div><div><strong>{correctCount}/{answeredCount}</strong><span>Correct</span></div></div><div className="form-actions centered"><button className="secondary-button" onClick={() => { savedRun.current = false; setStage("setup"); }}><BookOpen size={17}/> Change material</button><button className="secondary-button" disabled={exportingPdf} onClick={exportPdf}><Download size={17}/>{exportingPdf ? "Exporting…" : "Export questions PDF"}</button><button className="primary-button" onClick={startGame}><RotateCcw size={17}/> Play again</button></div>{aiUsage ? <p className="section-help">{aiUsage.remaining} of {aiUsage.limit} AI Study Games remaining today.</p> : null}{message ? <p className="game-warning">{message}</p> : null}</div></section>;
   }
 
   return <section className="battle-shell">
     <header className="battle-topbar"><div><button className="icon-button" onClick={() => setStage("setup")} aria-label="Exit battle"><X size={18}/></button><div><strong>{title}</strong><small>{subject}</small></div></div><div className="battle-stats"><span><Heart size={15}/> {hearts}</span><span><Sparkles size={15}/> x{streak}</span><span>{score} pts</span></div></header>
-    <div className="boss-zone"><div className={`boss-avatar ${currentCorrect ? "boss-hit" : ""}`}>{bossImage ? <img src={bossImage} alt={bossName || "Custom boss"}/> : <Swords size={50}/>}</div><strong>{bossName || "REVISION BOSS"}</strong><div className="boss-health"><span style={{ width: `${bossHp / 10}%` }}/></div><small>{bossHp} HP</small></div>
+    <div className="boss-zone"><div className={`boss-avatar ${currentCorrect ? "boss-hit" : ""}`}>{bossImage ? <img src={bossImage} alt={bossName || "Custom boss"/> : <Swords size={50}/>}</div><strong>{bossName || "REVISION BOSS"}</strong><div className="boss-health"><span style={{ width: `${bossHp / 10}%` }}/></div><small>{bossHp} HP</small></div>
     {current ? <article className="question-card"><div className="question-meta"><span>Question {index + 1} / {questions.length}</span><span>{current.type === "written" ? "Written" : "Multiple choice"}</span></div><h2>{current.prompt}</h2>
       {current.type === "mcq" ? <div className="choice-grid">{current.choices.map(choice => { const chosen = picked === choice; const isAnswer = choice.toLowerCase() === current.answer.toLowerCase(); return <button key={choice} disabled={Boolean(picked)} onClick={() => answer(choice)} className={`choice ${picked ? (isAnswer ? "correct" : chosen ? "wrong" : "") : ""}`}>{choice}</button>; })}</div> : <div className="written-question"><textarea className="study-input" rows={5} value={writtenAnswer} disabled={Boolean(writtenGrade) || grading} onChange={e => setWrittenAnswer(e.target.value)} placeholder="Write your answer in your own words…"/><button className="primary-button" disabled={!writtenAnswer.trim() || Boolean(writtenGrade) || grading} onClick={submitWritten}>{grading ? "Checking…" : "Submit answer"}</button></div>}
       {hasAnswered ? <div className={`answer-feedback ${currentCorrect ? "correct" : "wrong"}`}><strong>{currentCorrect ? "Direct hit!" : "Not quite."}</strong><span>{current.type === "written" ? writtenGrade?.feedback : current.explanation}</span>{current.type === "written" ? <span><strong>Model answer:</strong> {current.answer}</span> : null}<button className="primary-button" onClick={next}>{bossHp <= 0 || hearts <= 0 || index >= questions.length - 1 ? "See results" : "Next attack"}</button></div> : null}
