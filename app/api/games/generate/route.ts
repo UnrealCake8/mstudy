@@ -67,7 +67,7 @@ export async function POST(request: Request) {
         Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || "gpt-5.6",
+        model: process.env.OPENAI_MODEL || "gpt-5.4-nano",
         input: prompt,
         text: {
           format: {
