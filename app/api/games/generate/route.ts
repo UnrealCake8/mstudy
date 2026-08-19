@@ -20,11 +20,7 @@ const schema = {
         properties: {
           type: { type: "string", enum: ["mcq", "written"] },
           prompt: { type: "string" },
-          choices: {
-            type: "array",
-            maxItems: 4,
-            items: { type: "string" },
-          },
+          choices: { type: "array", maxItems: 4, items: { type: "string" } },
           answer: { type: "string" },
           explanation: { type: "string" },
         },
@@ -36,16 +32,10 @@ const schema = {
 };
 
 export async function POST(request: Request) {
-  if (!process.env.OPENAI_API_KEY) {
-    return NextResponse.json({ error: "AI question generation is not configured on this deployment." }, { status: 503 });
-  }
-
+  if (!process.env.OPENAI_API_KEY) return NextResponse.json({ error: "AI question generation is not configured on this deployment." }, { status: 503 });
   const body = (await request.json().catch(() => null)) as GenerateRequest | null;
   const text = body?.text?.trim();
-  if (!text || text.length < 80) {
-    return NextResponse.json({ error: "Not enough study material to generate a game." }, { status: 400 });
-  }
-
+  if (!text || text.length < 80) return NextResponse.json({ error: "Not enough study material to generate a game." }, { status: 400 });
   const material = text.slice(0, 24000);
   const prompt = [
     "You are generating revision questions from extracted study-document content.",
@@ -61,54 +51,17 @@ export async function POST(request: Request) {
     "Prefer meaningful comprehension questions over fill-in-the-blank wording when the content supports them.",
     "Explanations should be short, useful, and grounded directly in the study content.",
     "Do not invent facts that are not supported by the study content.",
-    "STUDY CONTENT:",
-    material,
+    "STUDY CONTENT:", material,
   ].join("\n\n");
-
   try {
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || "gpt-5.4-nano",
-        input: prompt,
-        text: {
-          format: {
-            type: "json_schema",
-            name: "study_game_questions",
-            strict: true,
-            schema,
-          },
-        },
-      }),
-    });
-
+    const response = await fetch("https://api.openai.com/v1/responses", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}` }, body: JSON.stringify({ model: process.env.OPENAI_MODEL || "gpt-5-nano", input: prompt, text: { format: { type: "json_schema", name: "study_game_questions", strict: true, schema } } }) });
     const data = await response.json().catch(() => null) as any;
-    if (!response.ok) {
-      return NextResponse.json({ error: data?.error?.message || "OpenAI could not generate questions." }, { status: response.status });
-    }
-
-    const outputText = data?.output
-      ?.flatMap((item: any) => item?.content || [])
-      ?.find((item: any) => item?.type === "output_text")?.text;
-
-    if (!outputText) {
-      return NextResponse.json({ error: "OpenAI returned no usable question set." }, { status: 502 });
-    }
-
+    if (!response.ok) return NextResponse.json({ error: data?.error?.message || "OpenAI could not generate questions." }, { status: response.status });
+    const outputText = data?.output?.flatMap((item: any) => item?.content || [])?.find((item: any) => item?.type === "output_text")?.text;
+    if (!outputText) return NextResponse.json({ error: "OpenAI returned no usable question set." }, { status: 502 });
     const parsed = JSON.parse(outputText) as { questions?: Array<{ type?: string; choices?: string[] }> };
-    if (!Array.isArray(parsed.questions) || parsed.questions.length < 4) {
-      return NextResponse.json({ error: "OpenAI returned an incomplete question set." }, { status: 502 });
-    }
-
-    parsed.questions = parsed.questions.map(question => {
-      if (question.type === "written") return { ...question, choices: [] };
-      return { ...question, type: "mcq", choices: Array.isArray(question.choices) ? question.choices.slice(0, 4) : [] };
-    });
-
+    if (!Array.isArray(parsed.questions) || parsed.questions.length < 4) return NextResponse.json({ error: "OpenAI returned an incomplete question set." }, { status: 502 });
+    parsed.questions = parsed.questions.map(question => question.type === "written" ? { ...question, choices: [] } : { ...question, type: "mcq", choices: Array.isArray(question.choices) ? question.choices.slice(0, 4) : [] });
     return NextResponse.json(parsed);
   } catch (error) {
     console.error("AI game generation failed", error);
