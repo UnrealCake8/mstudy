@@ -8,10 +8,10 @@ import { addItem, Note, subscribeCollection } from "@/lib/data";
 import type { ClassroomAssignment, ClassroomCourse, ClassroomResource } from "@/lib/classroom";
 
 type Question = { id: string; type: "mcq" | "written"; prompt: string; choices: string[]; answer: string; explanation: string };
+type QuestionMode = "mcq" | "written" | "mixed";
 type Stage = "setup" | "battle" | "results";
 type SourceKind = "note" | "assignment" | "resource" | "drive" | "text";
 type DriveStudyFile = { id: string; title: string; url?: string; mimeType?: string; extractedText?: string };
-
 type WrittenGrade = { correct: boolean; feedback: string };
 
 const BOSS_IMAGE_KEY = "mstudy:boss-image";
@@ -20,7 +20,7 @@ const STOP = new Set(["about","after","again","against","because","before","bein
 
 function cleanWord(word: string) { return word.replace(/[^A-Za-z0-9'-]/g, "").trim(); }
 function shuffle<T>(items: T[]) { const copy = [...items]; for (let i = copy.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [copy[i], copy[j]] = [copy[j], copy[i]]; } return copy; }
-function generateQuestions(text: string): Question[] {
+function generateQuestions(text: string, mode: QuestionMode): Question[] {
   const sentences = text.replace(/\s+/g, " ").split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(s => s.length > 35);
   const pool = Array.from(new Set(text.split(/\s+/).map(cleanWord).filter(w => w.length >= 5 && !STOP.has(w.toLowerCase()))));
   const questions: Question[] = [];
@@ -28,11 +28,16 @@ function generateQuestions(text: string): Question[] {
     const words = sentence.split(/\s+/).map(cleanWord).filter(Boolean);
     const candidates = words.filter(w => w.length >= 5 && !STOP.has(w.toLowerCase()));
     if (!candidates.length) continue;
-    const answer = candidates[Math.floor(candidates.length / 2)];
-    const distractors = shuffle(pool.filter(w => w.toLowerCase() !== answer.toLowerCase())).slice(0, 3);
-    if (distractors.length < 3) continue;
-    const escaped = answer.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    questions.push({ id: `${questions.length}-${answer}`, type: "mcq", prompt: sentence.replace(new RegExp(`\\b${escaped}\\b`, "i"), "_____"), choices: shuffle([answer, ...distractors]), answer, explanation: sentence });
+    const answerWord = candidates[Math.floor(candidates.length / 2)];
+    const shouldWrite = mode === "written" || (mode === "mixed" && questions.length % 2 === 1);
+    if (shouldWrite) {
+      questions.push({ id: `${questions.length}-written`, type: "written", prompt: `Explain the main idea in this statement: “${sentence}”`, choices: [], answer: sentence, explanation: sentence });
+    } else {
+      const distractors = shuffle(pool.filter(w => w.toLowerCase() !== answerWord.toLowerCase())).slice(0, 3);
+      if (distractors.length < 3) continue;
+      const escaped = answerWord.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      questions.push({ id: `${questions.length}-${answerWord}`, type: "mcq", prompt: sentence.replace(new RegExp(`\\b${escaped}\\b`, "i"), "_____"), choices: shuffle([answerWord, ...distractors]), answer: answerWord, explanation: sentence });
+    }
     if (questions.length >= 10) break;
   }
   return questions;
@@ -69,6 +74,7 @@ export function PlayPage() {
   const [pastedText, setPastedText] = useState("");
   const [stage, setStage] = useState<Stage>("setup");
   const [questions, setQuestions] = useState<Question[]>([]);
+  const [questionMode, setQuestionMode] = useState<QuestionMode>("mixed");
   const [index, setIndex] = useState(0);
   const [bossHp, setBossHp] = useState(1000);
   const [hearts, setHearts] = useState(3);
@@ -111,13 +117,7 @@ export function PlayPage() {
   const resourceMaterial = extractedMaterialText(selectedResource?.materials);
   const assignmentText = selectedAssignment ? (assignmentMaterial || selectedAssignment.description?.trim() || "") : "";
   const resourceText = selectedResource ? (resourceMaterial || selectedResource.description?.trim() || "") : "";
-
-  const sourceText = selectedNote?.content?.trim()
-    || selectedDrive?.extractedText?.trim()
-    || assignmentText
-    || resourceText
-    || pastedText.trim();
-
+  const sourceText = selectedNote?.content?.trim() || selectedDrive?.extractedText?.trim() || assignmentText || resourceText || pastedText.trim();
   const title = selectedNote?.title || selectedDrive?.title || selectedAssignment?.title || selectedResource?.title || "Custom study challenge";
   const sourceCourseId = selectedAssignment?.courseId || selectedResource?.courseId;
   const subject = selectedNote?.subject || (sourceCourseId ? courseNames.get(sourceCourseId) : "") || (selectedDrive ? "Drive file" : "Study material");
@@ -130,8 +130,8 @@ export function PlayPage() {
   useEffect(() => {
     if (stage !== "results" || savedRun.current || !user) return;
     savedRun.current = true;
-    void addItem(user.uid, "studyGames", { title, subject, gameType: "boss", sourceType, sourceId, score, accuracy: answeredCount ? Math.round(correctCount / answeredCount * 100) : 0, completed: true, usedAI: aiEnabled });
-  }, [stage, user, title, subject, sourceType, sourceId, score, answeredCount, correctCount, aiEnabled]);
+    void addItem(user.uid, "studyGames", { title, subject, gameType: "boss", sourceType, sourceId, score, accuracy: answeredCount ? Math.round(correctCount / answeredCount * 100) : 0, completed: true, usedAI: aiEnabled, questionMode });
+  }, [stage, user, title, subject, sourceType, sourceId, score, answeredCount, correctCount, aiEnabled, questionMode]);
 
   function resetSources(kind: SourceKind) {
     if (kind !== "note") setSelectedNoteId("");
@@ -157,15 +157,15 @@ export function PlayPage() {
     setBuilding(true); setMessage(""); let generated: Question[] = [];
     if (aiEnabled) {
       try {
-        const response = await fetch("/api/games/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title, subject, text: sourceText }) });
+        const response = await fetch("/api/games/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title, subject, text: sourceText, questionMode }) });
         const data = await response.json() as { questions?: Omit<Question, "id">[]; error?: string };
         if (!response.ok || !data.questions?.length) throw new Error(data.error || "AI generation failed.");
         generated = data.questions.map((q, i) => ({ ...q, type: q.type === "written" ? "written" : "mcq", choices: q.type === "written" ? [] : q.choices, id: `ai-${i}` }));
       } catch (error) {
-        generated = generateQuestions(sourceText);
+        generated = generateQuestions(sourceText, questionMode);
         setMessage(`${error instanceof Error ? error.message : "AI generation failed."} Using the built-in generator instead.`);
       }
-    } else generated = generateQuestions(sourceText);
+    } else generated = generateQuestions(sourceText, questionMode);
     setBuilding(false);
     if (generated.length < 4) { setMessage("MStudy could not make enough useful questions from the actual document text. Try another source or a longer file."); return; }
     setQuestions(generated); setIndex(0); setBossHp(1000); setHearts(3); setScore(0); setStreak(0); setCorrectCount(0); setAnsweredCount(0); setPicked(null); setWrittenAnswer(""); setWrittenGrade(null); savedRun.current = false; setStage("battle");
@@ -173,35 +173,15 @@ export function PlayPage() {
 
   function applyResult(correct: boolean) {
     setAnsweredCount(v => v + 1);
-    if (correct) {
-      const nextStreak = streak + 1;
-      const damage = Math.min(220, 110 + nextStreak * 15);
-      setCorrectCount(v => v + 1);
-      setStreak(nextStreak);
-      setBossHp(h => Math.max(0, h - damage));
-      setScore(s => s + 100 + nextStreak * 20);
-    } else {
-      setStreak(0);
-      setHearts(h => Math.max(0, h - 1));
-    }
+    if (correct) { const nextStreak = streak + 1; const damage = Math.min(220, 110 + nextStreak * 15); setCorrectCount(v => v + 1); setStreak(nextStreak); setBossHp(h => Math.max(0, h - damage)); setScore(s => s + 100 + nextStreak * 20); }
+    else { setStreak(0); setHearts(h => Math.max(0, h - 1)); }
   }
-
-  function answer(choice: string) {
-    if (picked || !current || current.type !== "mcq") return;
-    setPicked(choice);
-    applyResult(choice.toLowerCase() === current.answer.toLowerCase());
-  }
-
+  function answer(choice: string) { if (picked || !current || current.type !== "mcq") return; setPicked(choice); applyResult(choice.toLowerCase() === current.answer.toLowerCase()); }
   async function submitWritten() {
     if (!current || current.type !== "written" || writtenGrade || grading || !writtenAnswer.trim()) return;
-    setGrading(true);
-    let grade: WrittenGrade;
+    setGrading(true); let grade: WrittenGrade;
     try {
-      const response = await fetch("/api/games/grade", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: current.prompt, expectedAnswer: current.answer, studentAnswer: writtenAnswer.trim() }),
-      });
+      const response = await fetch("/api/games/grade", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: current.prompt, expectedAnswer: current.answer, studentAnswer: writtenAnswer.trim() }) });
       const data = await response.json() as { correct?: boolean; feedback?: string; error?: string };
       if (!response.ok || typeof data.correct !== "boolean") throw new Error(data.error || "Could not grade answer.");
       grade = { correct: data.correct, feedback: data.feedback || (data.correct ? "Good answer." : "Review the model answer below.") };
@@ -209,39 +189,23 @@ export function PlayPage() {
       const correct = simpleWrittenFallback(writtenAnswer, current.answer);
       grade = { correct, feedback: correct ? "Your answer includes the key idea." : "Your answer is missing part of the key idea." };
     }
-    setWrittenGrade(grade);
-    applyResult(grade.correct);
-    setGrading(false);
+    setWrittenGrade(grade); applyResult(grade.correct); setGrading(false);
   }
-
-  function next() {
-    if (!hasAnswered) return;
-    if (bossHp <= 0 || hearts <= 0 || index >= questions.length - 1) { setStage("results"); return; }
-    setIndex(i => i + 1);
-    setPicked(null);
-    setWrittenAnswer("");
-    setWrittenGrade(null);
-  }
+  function next() { if (!hasAnswered) return; if (bossHp <= 0 || hearts <= 0 || index >= questions.length - 1) { setStage("results"); return; } setIndex(i => i + 1); setPicked(null); setWrittenAnswer(""); setWrittenGrade(null); }
 
   if (stage === "setup") return <section className="page play-page">
     <div className="page-head play-head"><div><p className="eyebrow">Study games</p><h1>Turn revision into a game.</h1><p>Use notes, Drive files, assignments, Classroom materials or pasted text, then customize who you fight.</p></div><div className="play-hero-icon"><Gamepad2 size={34}/></div></div>
     <div className="play-layout">
       <article className="play-panel"><div className="form-heading"><BookOpen size={20}/><div><strong>Use an MStudy note</strong><span>Your saved notes are ready to play.</span></div></div><div className="note-picker">{notes.length === 0 ? <div className="empty-state compact"><strong>No notes yet</strong></div> : notes.map(note => <button key={note.id} onClick={() => { resetSources("note"); setSelectedNoteId(note.id); }} className={selectedNoteId === note.id ? "source-card active" : "source-card"}><span className="pill">{note.subject || "General"}</span><strong>{note.title}</strong><small>{note.content?.slice(0, 90) || "No note text"}</small></button>)}</div></article>
-
       <article className="play-panel"><div className="form-heading"><FolderOpen size={20}/><div><strong>Use an authorised Drive file</strong><span>Uses the actual extracted document text, not the filename.</span></div></div><div className="note-picker">{driveFiles.length === 0 ? <div className="empty-state compact"><strong>No authorised Drive files</strong><span>Use Authorise Drive file on the Classroom page first.</span></div> : driveFiles.map(file => <button key={file.id} onClick={() => { resetSources("drive"); setSelectedDriveId(file.id); }} className={selectedDriveId === file.id ? "source-card active" : "source-card"}><span className="pill">Drive</span><strong>{file.title}</strong><small>{file.extractedText ? `${file.extractedText.slice(0, 100)}…` : "No readable text extracted"}</small></button>)}</div></article>
-
       <article className="play-panel"><div className="form-heading"><GraduationCap size={20}/><div><strong>Use a Classroom assignment</strong><span>Document text is used first; assignment instructions are only a fallback.</span></div></div><div className="note-picker">{assignments.length === 0 ? <div className="empty-state compact"><strong>No synced assignments</strong><span>Sync Classroom first.</span></div> : assignments.map(item => { const key = `${item.courseId}:${item.id}`; const readable = Boolean(extractedMaterialText(item.materials)); return <button key={key} onClick={() => { resetSources("assignment"); setSelectedAssignmentKey(key); }} className={selectedAssignmentKey === key ? "source-card active" : "source-card"}><span className="pill">{courseNames.get(item.courseId) || "Classroom"}</span><strong>{item.title}</strong><small>{readable ? "Actual attachment text ready" : item.description?.slice(0, 90) || "No readable content yet"}</small></button>; })}</div></article>
-
       <article className="play-panel"><div className="form-heading"><FileText size={20}/><div><strong>Use Classroom materials</strong><span>Readable document contents are used as the study source.</span></div></div><div className="note-picker">{resources.length === 0 ? <div className="empty-state compact"><strong>No class materials yet</strong></div> : resources.map(item => { const key = `${item.courseId}:${item.id}`; const readable = Boolean(extractedMaterialText(item.materials)); return <button key={key} onClick={() => { resetSources("resource"); setSelectedResourceKey(key); }} className={selectedResourceKey === key ? "source-card active" : "source-card"}><span className="pill">{courseNames.get(item.courseId) || "Classroom"}</span><strong>{item.title}</strong><small>{readable ? "Actual resource text ready" : item.description?.slice(0, 90) || "No readable content yet"}</small></button>; })}</div></article>
-
       <article className="play-panel"><div className="form-heading"><WandSparkles size={20}/><div><strong>Paste study material</strong><span>Great for revision sheets, textbook sections or class notes.</span></div></div><textarea className="study-input" rows={10} value={pastedText} onChange={e => { resetSources("text"); setPastedText(e.target.value); }} placeholder="Paste a few paragraphs of study material here…"/></article>
-
       {(selectedAssignment || selectedResource)?.materials?.length ? <article className="play-panel"><div className="form-heading"><FileText size={20}/><div><strong>Selected attachments</strong><span>Only attachments with extracted text are used to generate questions.</span></div></div><div className="classroom-materials">{(selectedAssignment?.materials || selectedResource?.materials || []).map((m, i) => <div key={`${m.id || m.url || m.title}-${i}`} className="material-row"><span><FileText size={15}/>{m.title}{m.extractedText ? " ✓ text ready" : " · not readable yet"}</span>{m.url ? <a href={m.url} target="_blank" rel="noreferrer" className="text-button">Open <ExternalLink size={13}/></a> : null}</div>)}</div></article> : null}
-
       <article className="play-panel boss-customizer"><div className="form-heading"><ImagePlus size={20}/><div><strong>Customize your boss</strong><span>The image stays in this browser and is not uploaded to MStudy.</span></div></div><div className="boss-preview-row"><div className="boss-preview">{bossImage ? <img src={bossImage} alt="Custom boss"/> : <Swords size={30}/>}</div><div className="boss-fields"><label><span>Boss name</span><input value={bossName} onChange={e => changeBossName(e.target.value)} placeholder="Revision Boss"/></label><div className="boss-buttons"><label className="secondary-button upload-button"><ImagePlus size={16}/> Upload image<input type="file" accept="image/*" onChange={uploadBossImage}/></label>{bossImage ? <button className="secondary-button" onClick={removeBossImage}><X size={16}/> Remove</button> : null}</div></div></div></article>
     </div>
 
-    <div className="game-mode-card"><div className="mode-art"><Swords size={30}/></div><div><span className="pill">Boss Battle</span><h2>{bossName || "Revision Boss"}</h2><p>Correct answers deal damage. Games can now mix multiple-choice and written questions. Three mistakes and the boss wins.</p><label className="ai-toggle"><input type="checkbox" checked={aiEnabled} onChange={e => setAiEnabled(e.target.checked)}/><Bot size={16}/><span><strong>Use OpenAI for better questions</strong><small>OpenAI receives the extracted study text, not just the file or class name.</small></span></label></div><button className="primary-button game-start" disabled={!sourceText || building} onClick={startGame}><Play size={18}/>{building ? "Building…" : "Build my game"}</button></div>
+    <div className="game-mode-card"><div className="mode-art"><Swords size={30}/></div><div><span className="pill">Boss Battle</span><h2>{bossName || "Revision Boss"}</h2><p>Choose how you want to be tested, then fight the boss.</p><div className="form-actions"><button className={questionMode === "mcq" ? "primary-button" : "secondary-button"} onClick={() => setQuestionMode("mcq")}>MCQs only</button><button className={questionMode === "written" ? "primary-button" : "secondary-button"} onClick={() => setQuestionMode("written")}>Written only</button><button className={questionMode === "mixed" ? "primary-button" : "secondary-button"} onClick={() => setQuestionMode("mixed")}>Mixed</button></div><label className="ai-toggle"><input type="checkbox" checked={aiEnabled} onChange={e => setAiEnabled(e.target.checked)}/><Bot size={16}/><span><strong>Use OpenAI for better questions</strong><small>{questionMode === "mcq" ? "Generate multiple-choice questions only." : questionMode === "written" ? "Generate written questions only and grade answers for meaning." : "Generate a mix of MCQs and written questions."}</small></span></label></div><button className="primary-button game-start" disabled={!sourceText || building} onClick={startGame}><Play size={18}/>{building ? "Building…" : "Build my game"}</button></div>
     {message && <p className="game-warning">{message}</p>}
   </section>;
 
