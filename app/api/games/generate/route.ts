@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
 
-type GenerateRequest = {
-  title?: string;
-  subject?: string;
-  text?: string;
-};
+type QuestionMode = "mcq" | "written" | "mixed";
+type GenerateRequest = { title?: string; subject?: string; text?: string; questionMode?: QuestionMode };
 
 const schema = {
   type: "object",
@@ -36,13 +33,19 @@ export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as GenerateRequest | null;
   const text = body?.text?.trim();
   if (!text || text.length < 80) return NextResponse.json({ error: "Not enough study material to generate a game." }, { status: 400 });
+  const questionMode: QuestionMode = body?.questionMode === "mcq" || body?.questionMode === "written" ? body.questionMode : "mixed";
+  const modeInstruction = questionMode === "mcq"
+    ? "Generate ONLY multiple-choice questions. Every question must have type=mcq."
+    : questionMode === "written"
+      ? "Generate ONLY written free-response questions. Every question must have type=written."
+      : "Use a useful mix of multiple-choice and written free-response questions, aiming for roughly half of each when the material supports it.";
   const material = text.slice(0, 24000);
   const prompt = [
     "You are generating revision questions from extracted study-document content.",
     `Display title (metadata only): ${body?.title || "Study challenge"}`,
     `Subject label (metadata only): ${body?.subject || "General"}`,
     "Create 6 to 10 accurate revision questions using ONLY facts, ideas, arguments, definitions, examples, or explanations contained in STUDY CONTENT below.",
-    "Use a useful mix of multiple-choice and written free-response questions. Aim for roughly half written questions when the material supports it.",
+    modeInstruction,
     "For type=mcq: provide exactly four distinct choices and make answer exactly match one choice.",
     "For type=written: choices MUST be an empty array. The answer should be a concise model answer containing the key facts a student should mention.",
     "Written questions should usually be answerable in one or two sentences, not essays.",
@@ -61,7 +64,10 @@ export async function POST(request: Request) {
     if (!outputText) return NextResponse.json({ error: "OpenAI returned no usable question set." }, { status: 502 });
     const parsed = JSON.parse(outputText) as { questions?: Array<{ type?: string; choices?: string[] }> };
     if (!Array.isArray(parsed.questions) || parsed.questions.length < 4) return NextResponse.json({ error: "OpenAI returned an incomplete question set." }, { status: 502 });
-    parsed.questions = parsed.questions.map(question => question.type === "written" ? { ...question, choices: [] } : { ...question, type: "mcq", choices: Array.isArray(question.choices) ? question.choices.slice(0, 4) : [] });
+    parsed.questions = parsed.questions.map(question => {
+      if (questionMode === "written" || question.type === "written") return { ...question, type: "written", choices: [] };
+      return { ...question, type: "mcq", choices: Array.isArray(question.choices) ? question.choices.slice(0, 4) : [] };
+    });
     return NextResponse.json(parsed);
   } catch (error) {
     console.error("AI game generation failed", error);
