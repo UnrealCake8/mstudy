@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { AuthProvider } from "@/components/auth/auth-provider";
+import { MAdsTransitions } from "@/components/mads-transitions";
 import "./globals.css";
 import "./theme.css";
 
@@ -35,13 +36,12 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
-        <script
-          src="https://ads.mplace.cc/sdk.js"
-          data-site="site_5f427f89c2f9"
-          async
-        />
+        <script src="https://ads.mplace.cc/sdk.js" data-site="site_5f427f89c2f9" async />
       </head>
-      <body><AuthProvider>{children}</AuthProvider></body>
+      <body>
+        <AuthProvider>{children}</AuthProvider>
+        <MAdsTransitions />
+      </body>
     </html>
   );
 }
