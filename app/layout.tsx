@@ -3,11 +3,12 @@ import { AuthProvider } from "@/components/auth/auth-provider";
 import { MAdsTransitions } from "@/components/mads-transitions";
 import "./globals.css";
 import "./theme.css";
+import "./mplace-brand.css";
 
 export const metadata: Metadata = {
-  title: { default: "MStudy", template: "%s · MStudy" },
-  description: "Your school life, organised.",
-  applicationName: "MStudy",
+  title: { default: "MStudy by MPlace", template: "%s · MStudy" },
+  description: "MStudy by MPlace keeps school life organised with homework, notes, timetables, Classroom, and study tools.",
+  applicationName: "MStudy by MPlace",
 };
 
 export const viewport: Viewport = {
