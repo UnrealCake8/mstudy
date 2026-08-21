@@ -9,6 +9,8 @@ import { auth } from "@/lib/firebase";
 import { useAuth } from "@/components/auth/auth-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
 
+const MPLACE_LOGO = "https://unrealcake8.github.io/cdn-hls/mplace.png";
+
 const nav = [
   ["/", "Home", Home], ["/homework", "Homework", CheckSquare], ["/play", "Play", Gamepad2], ["/timetable", "Timetable", Clock3],
   ["/notes", "Notes", NotebookPen], ["/events", "Events", CalendarDays], ["/classroom", "Classroom", GraduationCap], ["/settings", "Settings", Settings],
@@ -21,8 +23,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return <div className="app-frame">
     <aside className="sidebar">
-      <div className="sidebar-brand-row"><Link href="/" className="brand">MStudy</Link><ThemeToggle compact /></div>
+      <div className="sidebar-brand-row">
+        <Link href="/" className="mplace-product-brand" aria-label="MStudy by MPlace home">
+          <img src={MPLACE_LOGO} alt="MPlace" className="mplace-parent-logo" />
+          <span><strong>MStudy</strong><small>by MPlace</small></span>
+        </Link>
+        <ThemeToggle compact />
+      </div>
       <nav className="side-nav">{nav.map(([href, label, Icon]) => <Link key={href} href={href} className={pathname === href ? "nav-link active" : "nav-link"}><Icon size={19}/><span>{label}</span></Link>)}</nav>
+      <a href="https://mplace.cc" className="mplace-family-link">Explore MPlace</a>
       <div className="user-block"><div className="avatar">{(user.displayName?.[0] ?? "S").toUpperCase()}</div><div className="user-meta"><strong>{user.displayName ?? "Student"}</strong><small>{user.email}</small></div><button aria-label="Sign out" className="icon-button" onClick={() => signOut(auth)}><LogOut size={18}/></button></div>
     </aside>
     <main className="main-content">{children}</main>
