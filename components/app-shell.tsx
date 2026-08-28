@@ -43,6 +43,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="user-block"><div className="avatar">{(user.displayName?.[0] ?? "S").toUpperCase()}</div><div className="user-meta"><strong>{user.displayName ?? "Student"}</strong><small>{user.email}</small></div><button aria-label="Sign out" className="icon-button" onClick={() => signOut(auth)}><LogOut size={18}/></button></div>
     </aside>
     <main className="main-content">{children}</main>
-    <nav className="bottom-nav">{baseNav.slice(0,5).map(([href,label,Icon]) => <Link key={href} href={href} className={pathname === href ? "bottom-link active" : "bottom-link"><Icon size={20}/><span>{label}</span></Link>)}</nav>
+    <nav className="bottom-nav">{baseNav.slice(0,5).map(([href,label,Icon]) => <Link key={href} href={href} className={pathname === href ? "bottom-link active" : "bottom-link"}><Icon size={20}/><span>{label}</span></Link>)}</nav>
   </div>;
 }
