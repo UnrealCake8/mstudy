@@ -9,6 +9,25 @@ service cloud.firestore {
       return signedIn() && request.auth.uid == userId;
     }
 
+    function isAdmin() {
+      return signedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    match /admins/{adminId} {
+      allow read: if signedIn() && (request.auth.uid == adminId || isAdmin());
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /schools/{schoolId} {
+      allow read: if signedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /schoolTimetables/{timetableId} {
+      allow read: if signedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
     match /users/{userId} {
       allow read, create, update: if isOwner(userId);
       allow delete: if false;
