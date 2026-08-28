@@ -12,6 +12,7 @@ import {
   saveSchoolSelection,
   SchoolConfig,
   SchoolSelection,
+  SchoolTimetable,
   SchoolTimetableEntry,
   subscribeSchoolConfig,
   subscribeSchoolSelection,
@@ -19,6 +20,7 @@ import {
 } from "@/lib/school-data";
 
 const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+type StudentWeek = "week1" | "week2";
 
 export function TimetablePage() {
   const { user } = useAuth();
@@ -28,17 +30,22 @@ export function TimetablePage() {
   const [editing, setEditing] = useState<TimetableClass | null>(null);
   const [config, setConfig] = useState<SchoolConfig | null>(null);
   const [selection, setSelection] = useState<SchoolSelection | null>(null);
-  const [schoolEntries, setSchoolEntries] = useState<SchoolTimetableEntry[]>([]);
+  const [schoolTimetable, setSchoolTimetable] = useState<SchoolTimetable | null>(null);
+  const [studentWeek, setStudentWeek] = useState<StudentWeek>("week1");
   const ses = isSesStudent(user?.email);
 
   useEffect(() => user ? subscribeCollection<TimetableClass>(user.uid, "timetable", setItems) : undefined, [user]);
   useEffect(() => ses ? subscribeSchoolConfig("ses", value => setConfig(value || DEFAULT_SES)) : undefined, [ses]);
   useEffect(() => user && ses ? subscribeSchoolSelection(user.uid, setSelection) : undefined, [user, ses]);
-  useEffect(() => selection ? subscribeTimetable(selection, value => setSchoolEntries(value?.publishedEntries || [])) : undefined, [selection]);
+  useEffect(() => selection ? subscribeTimetable(selection, setSchoolTimetable) : undefined, [selection]);
 
   const year = config?.years.find(item => item.id === selection?.yearId) || config?.years[0];
   const schoolClass = year?.classes.find(item => item.id === selection?.classId) || year?.classes[0];
   const house = schoolClass?.houses.find(item => item.id === selection?.houseId) || schoolClass?.houses[0];
+  const separateWeeks = schoolTimetable?.mode === "separate";
+  const schoolEntries: SchoolTimetableEntry[] = separateWeeks
+    ? (studentWeek === "week1" ? schoolTimetable?.publishedWeek1Entries || [] : schoolTimetable?.publishedWeek2Entries || [])
+    : schoolTimetable?.publishedEntries || [];
 
   const effectiveSelection = useMemo<SchoolSelection | null>(() => {
     if (!config || !year || !schoolClass || !house) return null;
@@ -55,6 +62,7 @@ export function TimetablePage() {
     if (!nextYearId || !nextClassId || !nextHouseId) return;
     const value = { schoolId: config.id, yearId: nextYearId, classId: nextClassId, houseId: nextHouseId };
     setSelection(value);
+    setStudentWeek("week1");
     await saveSchoolSelection(user.uid, value);
   }
 
@@ -108,12 +116,13 @@ export function TimetablePage() {
     </form> : null}
 
     {ses && selection ? <section className="school-week">
-      <div className="section-row"><div><h2 className="section-title">Published school timetable</h2><p className="section-help">{year?.label} → {schoolClass?.label} → {house?.label}</p></div></div>
-      {schoolEntries.length === 0 ? <div className="school-empty">No published timetable has been added for this class and house yet.</div> : <div className="week-grid">{days.map(day => <section className="day-column" key={day}><h2>{day}</h2>{schoolEntries.filter(i => i.day === day).sort((a,b) => a.startTime.localeCompare(b.startTime)).map(i => <article className="class-card" key={i.id}><div><strong>{i.subject || i.type || "School activity"}</strong><span>{i.startTime}–{i.endTime}</span><small>{i.room ? <button className="room-link" onClick={() => router.push(`/class-locator?room=${encodeURIComponent(i.room)}`)}>{roomText(i.room)}</button> : null}{i.teacher ? <span>{i.teacher}</span> : null}</small></div></article>)}</section>)}</div>}
+      <div className="section-row"><div><h2 className="section-title">Published school timetable</h2><p className="section-help">{year?.label} → {schoolClass?.label} → {house?.label}{separateWeeks ? ` · ${studentWeek === "week1" ? "Week 1" : "Week 2"}` : " · All Weeks"}</p></div></div>
+      {separateWeeks ? <div className="week-tabs" role="tablist" aria-label="Choose timetable week"><button className={studentWeek === "week1" ? "week-tab active" : "week-tab"} type="button" onClick={() => setStudentWeek("week1")}>Week 1</button><button className={studentWeek === "week2" ? "week-tab active" : "week-tab"} type="button" onClick={() => setStudentWeek("week2")}>Week 2</button></div> : <div className="week-tabs"><span className="week-tab active">All Weeks</span></div>}
+      {schoolEntries.length === 0 ? <div className="school-empty">No published timetable has been added for {separateWeeks ? (studentWeek === "week1" ? "Week 1" : "Week 2") : "this class and house"} yet.</div> : <div className="week-grid">{days.map(day => <section className="day-column" key={day}><h2>{day}</h2>{schoolEntries.filter(i => i.day === day).sort((a,b) => a.startTime.localeCompare(b.startTime)).map(i => <article className="class-card" key={i.id}><div><strong>{i.subject || i.type || "School activity"}</strong><span>{i.startTime}–{i.endTime}</span><small>{i.room ? <button className="room-link" onClick={() => router.push(`/class-locator?room=${encodeURIComponent(i.room)}`)}>{roomText(i.room)}</button> : null}{i.teacher ? <span>{i.teacher}</span> : null}</small></div></article>)}</section>)}</div>}
     </section> : null}
 
     <section className="school-week">
-      <div className="section-row"><div><h2 className="section-title">{ses ? "My personal timetable" : "My timetable"}</h2><p className="section-help">These classes belong only to you and can be edited at any time.</p></div></div>
+      <div className="section-row"><div><h2 className="section-title">{ses ? "My personal timetable" : "My timetable"}</h2><p className="section-help">These classes belong only to you and can be edited or deleted at any time.</p></div></div>
       <div className="week-grid">{days.map(day => <section className="day-column" key={day}><h2>{day}</h2>{items.filter(i => i.day === day).sort((a,b) => a.startTime.localeCompare(b.startTime)).map(i => <article className="class-card" key={i.id}><div><strong>{i.subject}</strong><span>{i.startTime}–{i.endTime}</span><small>{i.room ? <span className="school-room-meta"><Building2 size={12}/> {roomText(i.room)}</span> : null}{i.teacher ? <span>{i.teacher}</span> : null}</small></div><div><button className="icon-button" aria-label={`Edit ${i.subject}`} onClick={() => edit(i)}><Pencil size={15}/></button><button className="icon-button danger" aria-label={`Delete ${i.subject}`} onClick={() => user && deleteItem(user.uid, "timetable", i.id)}><Trash2 size={15}/></button></div></article>)}</section>)}</div>
     </section>
   </section>;
