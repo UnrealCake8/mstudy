@@ -20,6 +20,17 @@ import {
 } from "@/lib/school-data";
 
 const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+const lessonSlots = [
+  ["07:40", "08:05"],
+  ["08:05", "09:00"],
+  ["09:00", "09:55"],
+  ["09:55", "10:50"],
+  ["11:15", "12:10"],
+  ["12:10", "13:05"],
+  ["13:50", "14:45"],
+  ["14:45", "15:40"],
+] as const;
+
 const emptyEntry = (): SchoolTimetableEntry => ({
   id: crypto.randomUUID(),
   day: "Monday",
@@ -49,20 +60,16 @@ type PdfJs = {
 const PDFJS_VERSION = "3.11.174";
 
 function pdfWindow() {
-  return window as Window & { pdfjsLib?: PdfJs };
+  return window as typeof window & { pdfjsLib?: PdfJs };
 }
 
-async function loadPdfJs(): Promise<PdfJs> {
-  const current = pdfWindow();
-  if (current.pdfjsLib) return current.pdfjsLib;
+async function loadPdfJs() {
+  const browser = pdfWindow();
+  if (browser.pdfjsLib) return browser.pdfjsLib;
 
   await new Promise<void>((resolve, reject) => {
     const existing = document.querySelector<HTMLScriptElement>("script[data-mstudy-pdfjs]");
     if (existing) {
-      if (pdfWindow().pdfjsLib) {
-        resolve();
-        return;
-      }
       existing.addEventListener("load", () => resolve(), { once: true });
       existing.addEventListener("error", () => reject(new Error("PDF reader failed to load.")), { once: true });
       return;
@@ -83,79 +90,155 @@ async function loadPdfJs(): Promise<PdfJs> {
   return loaded;
 }
 
-function normaliseTime(value: string) {
-  const clean = value.trim().toLowerCase().replace(".", ":");
-  const match = clean.match(/^(\d{1,2}):(\d{2})\s*(am|pm)?$/);
-  if (!match) return "";
-  let hour = Number(match[1]);
-  const minute = match[2];
-  if (match[3] === "pm" && hour < 12) hour += 12;
-  if (match[3] === "am" && hour === 12) hour = 0;
-  if (hour > 23) return "";
-  return `${String(hour).padStart(2, "0")}:${minute}`;
+function splitCells(line: string) {
+  return line.split("|").map(part => part.replace(/\s+/g, " ").trim()).filter(Boolean);
 }
 
-function parseTimetableLines(lines: string[]) {
+function cleanSubject(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function isTime(value: string) {
+  return /^\d{1,2}:\d{2}$/.test(value.trim());
+}
+
+function looksLikeRoom(value: string) {
+  const clean = value.replace(/\s+/g, " ").trim();
+  return /^(?:[A-Z]{1,4}\s*\d{1,4}(?:\s*\d+)?[A-Z]?|SH\s*\d{1,3})$/i.test(clean);
+}
+
+function splitTeachers(line: string) {
+  const piped = splitCells(line);
+  if (piped.length >= 8) return piped.slice(0, 8);
+  const byTitle = line
+    .split(/(?=\b(?:Mr|Mrs|Ms|Miss|Dr)\s+)/)
+    .map(part => part.replace(/^\s*\|?\s*/, "").trim())
+    .filter(Boolean);
+  return byTitle.length >= 8 ? byTitle.slice(0, 8) : piped;
+}
+
+function makeEntry(day: string, index: number, subject: string, room = "", teacher = "") {
+  const [startTime, endTime] = lessonSlots[index];
+  const clean = cleanSubject(subject);
+  return {
+    id: crypto.randomUUID(),
+    day,
+    subject: clean,
+    startTime,
+    endTime,
+    room: room.trim(),
+    teacher: teacher.trim(),
+    type: /break|lunch|registration|assembly/i.test(clean) ? "Activity" : "Lesson",
+    notes: "Imported from SES PDF",
+  } satisfies SchoolTimetableEntry;
+}
+
+function parseSesRowLayout(lines: string[]) {
   const result: SchoolTimetableEntry[] = [];
-  let currentDay = "";
-  const dayPattern = /(Monday|Tuesday|Wednesday|Thursday|Friday)/i;
-  const timeRangePattern = /(\d{1,2}[.:]\d{2}\s*(?:am|pm)?)\s*(?:-|–|—|to)\s*(\d{1,2}[.:]\d{2}\s*(?:am|pm)?)/i;
 
-  for (const original of lines) {
-    let line = original.replace(/\s+/g, " ").replace(/\s*\|\s*/g, " | ").trim();
-    if (!line) continue;
+  for (const day of days) {
+    const dayIndex = lines.findIndex(line => line.trim().toLowerCase() === day.toLowerCase());
+    if (dayIndex < 0) continue;
 
-    const foundDay = line.match(dayPattern)?.[1];
-    if (foundDay) currentDay = foundDay[0].toUpperCase() + foundDay.slice(1).toLowerCase();
+    const nextDayIndexes = days
+      .map(other => lines.findIndex((line, index) => index > dayIndex && line.trim().toLowerCase() === other.toLowerCase()))
+      .filter(index => index > dayIndex);
+    const endIndex = nextDayIndexes.length ? Math.min(...nextDayIndexes) : lines.length;
+    const block = lines.slice(dayIndex + 1, endIndex);
 
-    const timeMatch = line.match(timeRangePattern);
-    if (!timeMatch || !currentDay) continue;
+    const lessonLineIndex = block.findIndex(line => /Lesson\s*1/i.test(line) && /Lesson\s*8/i.test(line));
+    if (lessonLineIndex < 0) continue;
 
-    const startTime = normaliseTime(timeMatch[1]);
-    const endTime = normaliseTime(timeMatch[2]);
-    if (!startTime || !endTime) continue;
+    const subjectLine = block[lessonLineIndex + 2] || "";
+    const roomLine = block[lessonLineIndex + 3] || "";
+    const teacherLine = block[lessonLineIndex + 4] || "";
 
-    line = line.replace(dayPattern, " ").replace(timeRangePattern, " ").trim();
-    const pieces = line.split("|").map(part => part.trim()).filter(Boolean);
-    if (!pieces.length) continue;
+    const subjects = splitCells(subjectLine);
+    const rooms = splitCells(roomLine);
+    const teachers = splitTeachers(teacherLine);
 
-    const roomIndex = pieces.findIndex(part =>
-      /^[A-Za-z]{1,4}\s*\d{1,4}[A-Za-z]?$/.test(part) || /\broom\s*[A-Za-z0-9-]+/i.test(part)
-    );
-    const room = roomIndex >= 0 ? pieces[roomIndex].replace(/^room\s*/i, "") : "";
-    const subjectParts = pieces.filter((_, index) => index !== roomIndex);
-    let teacher = "";
-    if (subjectParts.length > 1) teacher = subjectParts.pop() || "";
-    const subject = subjectParts.join(" - ").trim();
-    if (!subject || /^(time|period|lesson)$/i.test(subject)) continue;
+    if (subjects.length < 4) continue;
 
-    result.push({
-      id: crypto.randomUUID(),
-      day: currentDay,
-      subject,
-      startTime,
-      endTime,
-      room,
-      teacher,
-      type: /break|lunch|registration|assembly/i.test(subject) ? "Activity" : "Lesson",
-      notes: "Imported from PDF",
+    subjects.slice(0, 8).forEach((subject, index) => {
+      if (!subject || index >= lessonSlots.length) return;
+      result.push(makeEntry(day, index, subject, rooms[index] || "", teachers[index] || ""));
     });
   }
 
-  return result.filter((entry, index, all) =>
-    all.findIndex(other =>
-      other.day === entry.day &&
-      other.startTime === entry.startTime &&
-      other.endTime === entry.endTime &&
-      other.subject.toLowerCase() === entry.subject.toLowerCase()
-    ) === index
-  );
+  return result;
 }
 
-async function extractPdfLines(file: File) {
+function parseSesColumnLayout(lines: string[]) {
+  const headerIndex = lines.findIndex(line => /Monday/i.test(line) && /Tuesday/i.test(line) && /Wednesday/i.test(line) && /Thursday/i.test(line));
+  if (headerIndex < 0) return [];
+
+  const headerDays = splitCells(lines[headerIndex]).filter(value => days.includes(value));
+  const supportedDays = headerDays.slice(0, 4);
+  if (supportedDays.length < 4) return [];
+
+  const columns = supportedDays.map(() => [] as string[]);
+
+  for (const line of lines.slice(headerIndex + 1)) {
+    if (/Week\s*(?:Two|2)/i.test(line)) break;
+    const cells = splitCells(line);
+    if (cells.length < supportedDays.length) continue;
+    supportedDays.forEach((_, index) => {
+      if (cells[index]) columns[index].push(cells[index]);
+    });
+  }
+
+  const result: SchoolTimetableEntry[] = [];
+
+  columns.forEach((tokens, dayIndex) => {
+    let cursor = 0;
+    lessonSlots.forEach(([startTime, endTime], lessonIndex) => {
+      let startIndex = -1;
+      for (let index = cursor; index < tokens.length; index++) {
+        if (tokens[index] !== startTime) continue;
+        const previous = tokens[index - 1] || "";
+        if (looksLikeRoom(previous)) {
+          startIndex = index;
+          break;
+        }
+      }
+      if (startIndex < 0) return;
+
+      let endIndex = -1;
+      for (let index = startIndex + 1; index <= Math.min(tokens.length - 1, startIndex + 4); index++) {
+        if (tokens[index] === endTime) {
+          endIndex = index;
+          break;
+        }
+      }
+      if (endIndex < 0) return;
+
+      let subject = "";
+      for (let index = endIndex + 1; index <= Math.min(tokens.length - 1, endIndex + 3); index++) {
+        const candidate = tokens[index];
+        if (!candidate || isTime(candidate) || /^\d+$/.test(candidate)) continue;
+        subject = candidate;
+        break;
+      }
+      if (!subject) return;
+
+      result.push(makeEntry(supportedDays[dayIndex], lessonIndex, subject, tokens[startIndex - 1] || "", ""));
+      cursor = endIndex + 1;
+    });
+  });
+
+  return result;
+}
+
+function parseSesTimetablePage(lines: string[]) {
+  const rowLayout = parseSesRowLayout(lines);
+  if (rowLayout.length >= 8) return rowLayout;
+  return parseSesColumnLayout(lines);
+}
+
+async function extractPdfPages(file: File) {
   const pdfjs = await loadPdfJs();
   const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
-  const lines: string[] = [];
+  const pages: string[][] = [];
 
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
     const page = await pdf.getPage(pageNumber);
@@ -178,6 +261,7 @@ async function extractPdfLines(file: File) {
     }
 
     rows.sort((a, b) => b.y - a.y);
+    const lines: string[] = [];
     for (const row of rows) {
       const sorted = row.items.sort((a, b) => a.x - b.x);
       let text = "";
@@ -189,9 +273,10 @@ async function extractPdfLines(file: File) {
       });
       if (text.trim()) lines.push(text.trim());
     }
+    pages.push(lines);
   }
 
-  return lines;
+  return pages;
 }
 
 export function AdminPage() {
@@ -210,30 +295,31 @@ export function AdminPage() {
   const [status, setStatus] = useState("");
   const [pdfImporting, setPdfImporting] = useState(false);
 
-  useEffect(() => {
+  async function checkAdminAccess() {
     if (!user) return;
     setAllowed(null);
     setAccessError("");
-    void isAdmin(user.uid)
-      .then(setAllowed)
-      .catch(error => {
-        const code = typeof error === "object" && error && "code" in error
-          ? String((error as { code?: unknown }).code || "")
-          : "";
-        setAccessError(code || "Unable to read the admin record from Firestore.");
-        setAllowed(false);
-      });
-  }, [user]);
+    try {
+      setAllowed(await isAdmin(user.uid));
+    } catch (error) {
+      const code = typeof error === "object" && error && "code" in error ? String((error as { code?: unknown }).code || "") : "";
+      setAccessError(code || "Unable to read the admin record from Firestore.");
+      setAllowed(false);
+    }
+  }
 
+  useEffect(() => { if (user) void checkAdminAccess(); }, [user]);
   useEffect(() => subscribeSchoolConfig("ses", setConfig), []);
 
   useEffect(() => {
     if (!config) return;
     const validYear = config.years.find(item => item.id === yearId) || config.years[0];
     if (!validYear) {
-      setYearId("");
-      setClassId("");
-      setHouseId("");
+      if (yearId || classId || houseId) {
+        setYearId("");
+        setClassId("");
+        setHouseId("");
+      }
       return;
     }
     const validClass = validYear.classes.find(item => item.id === classId) || validYear.classes[0];
@@ -267,10 +353,15 @@ export function AdminPage() {
 
   const entries = weekView === "week1" ? week1Entries : weekView === "week2" ? week2Entries : allEntries;
   const setEntries = weekView === "week1" ? setWeek1Entries : weekView === "week2" ? setWeek2Entries : setAllEntries;
-  const sortedEntries = useMemo(
-    () => [...entries].sort((a, b) => days.indexOf(a.day) - days.indexOf(b.day) || a.startTime.localeCompare(b.startTime)),
-    [entries]
-  );
+  const sortedEntries = useMemo(() => [...entries].sort((a, b) => days.indexOf(a.day) - days.indexOf(b.day) || a.startTime.localeCompare(b.startTime)), [entries]);
+
+  if (allowed === null) return <section className="page"><p>Checking admin access…</p></section>;
+  if (!allowed) return <section className="page"><div className="admin-lock"><ShieldCheck size={30}/><h1>Admin access required</h1><p>MStudy is checking for a Firestore document at <code>admins/{user?.uid}</code>.</p>{user?.uid ? <p><strong>Your current Firebase UID:</strong><br/><code>{user.uid}</code></p> : null}{accessError ? <p><strong>Firestore error:</strong> <code>{accessError}</code></p> : <p>No admin document was found for this signed-in account.</p>}<p>Make sure the document ID exactly matches this UID and that it is in the same Firebase project used by this MStudy deployment.</p><button className="primary-button" onClick={() => void checkAdminAccess()}>Check again</button></div></section>;
+
+  async function initialise() {
+    await seedSesConfig();
+    setStatus("SES structure created.");
+  }
 
   async function persistConfig(next: SchoolConfig) {
     setConfig(next);
@@ -292,10 +383,7 @@ export function AdminPage() {
     const label = window.prompt("Class label, e.g. 8H");
     if (!label || !config || !year) return;
     const nextClass: SchoolClass = { id: label.toLowerCase().replace(/\s+/g, ""), label, houses: [] };
-    const years = config.years.map(y => y.id === year.id
-      ? { ...y, classes: [...y.classes.filter(c => c.id !== nextClass.id), nextClass] }
-      : y
-    );
+    const years = config.years.map(y => y.id === year.id ? { ...y, classes: [...y.classes.filter(c => c.id !== nextClass.id), nextClass] } : y);
     await persistConfig({ ...config, years });
     setClassId(nextClass.id);
     setHouseId("");
@@ -303,28 +391,22 @@ export function AdminPage() {
 
   async function deleteClass() {
     if (!config || !year || !schoolClass) return;
-    if (!window.confirm(`Delete ${schoolClass.label}? Existing timetable documents are left untouched for safety.`)) return;
+    if (!window.confirm(`Delete ${schoolClass.label}? This removes the class from the school selector. Existing timetable documents are left untouched for safety.`)) return;
     const remaining = year.classes.filter(c => c.id !== schoolClass.id);
     const years = config.years.map(y => y.id === year.id ? { ...y, classes: remaining } : y);
+    const deletedLabel = schoolClass.label;
     await persistConfig({ ...config, years });
-    setClassId(remaining[0]?.id || "");
-    setHouseId(remaining[0]?.houses[0]?.id || "");
+    const fallback = remaining[0];
+    setClassId(fallback?.id || "");
+    setHouseId(fallback?.houses[0]?.id || "");
+    setStatus(`${deletedLabel} deleted. Any stale selections will repair themselves automatically.`);
   }
 
   async function addHouse() {
     const label = window.prompt("House name");
     if (!label || !config || !year || !schoolClass) return;
     const nextHouse: House = { id: label.toLowerCase().replace(/\s+/g, "-"), label };
-    const years = config.years.map(y => y.id === year.id
-      ? {
-          ...y,
-          classes: y.classes.map(c => c.id === schoolClass.id
-            ? { ...c, houses: [...c.houses.filter(h => h.id !== nextHouse.id), nextHouse] }
-            : c
-          ),
-        }
-      : y
-    );
+    const years = config.years.map(y => y.id === year.id ? { ...y, classes: y.classes.map(c => c.id === schoolClass.id ? { ...c, houses: [...c.houses.filter(h => h.id !== nextHouse.id), nextHouse] } : c) } : y);
     await persistConfig({ ...config, years });
     setHouseId(nextHouse.id);
   }
@@ -334,10 +416,7 @@ export function AdminPage() {
     if (!prefix || !config) return;
     const building = window.prompt("Building name")?.trim();
     if (!building) return;
-    await persistConfig({
-      ...config,
-      roomPrefixes: [...config.roomPrefixes.filter(item => item.prefix !== prefix), { prefix, building }],
-    });
+    await persistConfig({ ...config, roomPrefixes: [...config.roomPrefixes.filter(item => item.prefix !== prefix), { prefix, building }] });
   }
 
   function updateEntry(id: string, key: keyof SchoolTimetableEntry, value: string) {
@@ -355,6 +434,7 @@ export function AdminPage() {
       }
       setWeekView("week1");
     }
+    setStatus(nextMode === "separate" ? "Separate Weeks enabled. Edit Week 1 and Week 2 independently, then save or publish." : "Separate Weeks disabled. Students will use the All Weeks timetable.");
   }
 
   async function importPdf(file?: File) {
@@ -363,18 +443,56 @@ export function AdminPage() {
       setStatus("Please choose a PDF timetable.");
       return;
     }
-    if (entries.length > 0 && !window.confirm(`Importing ${file.name} will replace the timetable currently shown. Continue?`)) return;
+
+    const hasExisting = allEntries.length > 0 || week1Entries.length > 0 || week2Entries.length > 0;
+    if (hasExisting && !window.confirm(`Importing ${file.name} may replace the timetable data currently loaded for this class and house. Continue?`)) return;
 
     setPdfImporting(true);
     setStatus(`Reading ${file.name}…`);
     try {
-      const imported = parseTimetableLines(await extractPdfLines(file));
-      if (!imported.length) {
-        setStatus("MStudy could read the PDF, but could not confidently find timetable rows. It needs selectable text with a weekday and start–end time for each lesson. Nothing was changed.");
+      const pages = await extractPdfPages(file);
+      const parsed = pages.map(lines => ({
+        lines,
+        entries: parseSesTimetablePage(lines),
+        text: lines.join(" "),
+      }));
+
+      const weekOne = parsed.find(page => /Week\s*(?:One|1)\b/i.test(page.text));
+      const weekTwo = parsed.find(page => /Week\s*(?:Two|2)\b/i.test(page.text));
+
+      if (weekOne?.entries.length && weekTwo?.entries.length) {
+        setMode("separate");
+        setWeek1Entries(weekOne.entries);
+        setWeek2Entries(weekTwo.entries);
+        setWeekView("week1");
+        setStatus(`Imported both SES timetable weeks from ${file.name}: ${weekOne.entries.length} Week 1 items and ${weekTwo.entries.length} Week 2 items. Review them, then Save draft or Publish timetable.`);
         return;
       }
-      setEntries(imported);
-      setStatus(`Imported ${imported.length} timetable items from ${file.name}. Review them below, then Save draft or Publish timetable.`);
+
+      if (weekOne?.entries.length) {
+        setMode("separate");
+        setWeek1Entries(weekOne.entries);
+        setWeekView("week1");
+        setStatus(`Imported ${weekOne.entries.length} Week 1 timetable items from ${file.name}. Review them before publishing.`);
+        return;
+      }
+
+      if (weekTwo?.entries.length) {
+        setMode("separate");
+        setWeek2Entries(weekTwo.entries);
+        setWeekView("week2");
+        setStatus(`Imported ${weekTwo.entries.length} Week 2 timetable items from ${file.name}. Review them before publishing.`);
+        return;
+      }
+
+      const fallback = parsed.flatMap(page => page.entries);
+      if (!fallback.length) {
+        setStatus("MStudy could read the PDF, but it did not match the SES timetable layouts this importer is based on. Nothing was changed.");
+        return;
+      }
+
+      setEntries(fallback);
+      setStatus(`Imported ${fallback.length} timetable items from ${file.name}. Please review them before publishing.`);
     } catch (error) {
       setStatus(error instanceof Error ? `PDF import failed: ${error.message}` : "PDF import failed. Nothing was changed.");
     } finally {
@@ -394,145 +512,52 @@ export function AdminPage() {
     setStatus(`Published ${mode === "separate" ? "Week 1 and Week 2" : "All Weeks"} to ${year.label} → ${schoolClass.label} → ${house.label}.`);
   }
 
-  if (allowed === null) return <section className="page"><p>Checking admin access…</p></section>;
-
-  if (!allowed) {
-    return <section className="page"><div className="admin-lock">
-      <ShieldCheck size={30}/>
-      <h1>Admin access required</h1>
-      <p>MStudy is checking for a Firestore document at <code>admins/{user?.uid}</code>.</p>
-      {accessError ? <p><strong>Firestore error:</strong> <code>{accessError}</code></p> : null}
-    </div></section>;
-  }
-
-  if (!config) {
-    return <section className="page"><div className="admin-lock">
-      <h1>Set up MStudy school data</h1>
-      <p>No SES school configuration exists yet.</p>
-      <button className="primary-button" onClick={() => void seedSesConfig()}><Plus size={17}/> Initialise SES</button>
-    </div></section>;
-  }
+  if (!config) return <section className="page"><div className="admin-lock"><h1>Set up MStudy school data</h1><p>No SES school configuration exists yet.</p><button className="primary-button" onClick={initialise}><Plus size={17}/> Initialise SES</button></div></section>;
 
   return <section className="page">
-    <div className="page-head"><div>
-      <p className="eyebrow">Control centre</p>
-      <h1>MStudy Admin</h1>
-      <p>Manage school structure, room prefixes and the master timetable students receive.</p>
-    </div></div>
-
+    <div className="page-head"><div><p className="eyebrow">Control centre</p><h1>MStudy Admin</h1><p>Manage school structure, room prefixes and the master timetable students receive.</p></div></div>
     {status ? <div className="notice">{status}</div> : null}
 
     <section className="admin-section">
-      <div className="section-row"><div>
-        <h2 className="section-title">School structure</h2>
-        <p className="section-help">Add years, classes and houses without changing the code.</p>
-      </div></div>
-
+      <div className="section-row"><div><h2 className="section-title">School structure</h2><p className="section-help">Add years, classes and houses without changing the code. Invalid Firebase references are repaired automatically.</p></div></div>
+      {config.years.length === 0 ? <div className="school-empty">No valid years remain. Use Add year to rebuild the structure.</div> : null}
       <div className="admin-select-grid">
-        <label>Year
-          <select value={yearId} onChange={e => {
-            const next = e.target.value;
-            setYearId(next);
-            const y = config.years.find(item => item.id === next);
-            setClassId(y?.classes[0]?.id || "");
-            setHouseId(y?.classes[0]?.houses[0]?.id || "");
-          }}>
-            {config.years.map(y => <option key={y.id} value={y.id}>{y.label}</option>)}
-          </select>
-        </label>
-        <label>Class
-          <select value={classId} onChange={e => {
-            const next = e.target.value;
-            setClassId(next);
-            const c = year?.classes.find(item => item.id === next);
-            setHouseId(c?.houses[0]?.id || "");
-          }} disabled={!year}>
-            {year?.classes.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
-          </select>
-        </label>
-        <label>House
-          <select value={houseId} onChange={e => setHouseId(e.target.value)} disabled={!schoolClass}>
-            {schoolClass?.houses.map(h => <option key={h.id} value={h.id}>{h.label}</option>)}
-          </select>
-        </label>
+        <label>Year<select value={yearId} onChange={e => { const next = e.target.value; setYearId(next); const y = config.years.find(item => item.id === next); setClassId(y?.classes[0]?.id || ""); setHouseId(y?.classes[0]?.houses[0]?.id || ""); }}>{config.years.map(y => <option key={y.id} value={y.id}>{y.label}</option>)}</select></label>
+        <label>Class<select value={classId} onChange={e => { const next = e.target.value; setClassId(next); const c = year?.classes.find(item => item.id === next); setHouseId(c?.houses[0]?.id || ""); }} disabled={!year}>{year?.classes.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}</select></label>
+        <label>House<select value={houseId} onChange={e => setHouseId(e.target.value)} disabled={!schoolClass}>{schoolClass?.houses.map(h => <option key={h.id} value={h.id}>{h.label}</option>)}</select></label>
       </div>
-
-      <div className="form-actions">
-        <button className="text-button" onClick={() => void addYear()}><Plus size={15}/> Add year</button>
-        <button className="text-button" onClick={() => void addClass()} disabled={!year}><Plus size={15}/> Add class</button>
-        <button className="text-button danger" onClick={() => void deleteClass()} disabled={!schoolClass}><Trash2 size={15}/> Delete class</button>
-        <button className="text-button" onClick={() => void addHouse()} disabled={!schoolClass}><Plus size={15}/> Add house</button>
-      </div>
+      <div className="form-actions"><button className="text-button" onClick={addYear}><Plus size={15}/> Add year</button><button className="text-button" onClick={addClass} disabled={!year}><Plus size={15}/> Add class</button><button className="text-button danger" onClick={deleteClass} disabled={!schoolClass}><Trash2 size={15}/> Delete class</button><button className="text-button" onClick={addHouse} disabled={!schoolClass}><Plus size={15}/> Add house</button></div>
     </section>
 
     <section className="admin-section">
-      <div className="section-row"><div>
-        <h2 className="section-title">Class Locator</h2>
-        <p className="section-help">Room prefixes are used everywhere in the app.</p>
-      </div><button className="text-button" onClick={() => void addPrefix()}><Plus size={15}/> Add prefix</button></div>
-      <div className="locator-prefix-grid">
-        {config.roomPrefixes.map(item => <article key={item.prefix}>
-          <strong>{item.prefix}</strong><span>{item.building}</span>
-          <button className="icon-button danger" onClick={() => void persistConfig({ ...config, roomPrefixes: config.roomPrefixes.filter(p => p.prefix !== item.prefix) })}><Trash2 size={14}/></button>
-        </article>)}
-      </div>
+      <div className="section-row"><div><h2 className="section-title">Class Locator</h2><p className="section-help">Room prefixes are used everywhere in the app.</p></div><button className="text-button" onClick={addPrefix}><Plus size={15}/> Add prefix</button></div>
+      <div className="locator-prefix-grid">{config.roomPrefixes.map(item => <article key={item.prefix}><strong>{item.prefix}</strong><span>{item.building}</span><button className="icon-button danger" onClick={() => persistConfig({ ...config, roomPrefixes: config.roomPrefixes.filter(p => p.prefix !== item.prefix) })}><Trash2 size={14}/></button></article>)}</div>
     </section>
 
     <section className="admin-section">
-      <div className="section-row"><div>
-        <h2 className="section-title">Master timetable</h2>
-        <p className="section-help">Editing {year?.label || "—"} → {schoolClass?.label || "—"} → {house?.label || "—"}. Save drafts safely, then publish when ready.</p>
-      </div><div className="form-actions">
-        <label className="secondary-button" aria-disabled={!house || pdfImporting} style={{ opacity: !house || pdfImporting ? .55 : 1, cursor: !house || pdfImporting ? "not-allowed" : "pointer" }}>
-          <FileUp size={17}/>{pdfImporting ? "Importing PDF…" : "Import PDF"}
-          <input type="file" accept="application/pdf,.pdf" hidden disabled={!house || pdfImporting} onChange={e => {
-            const file = e.target.files?.[0];
-            e.currentTarget.value = "";
-            void importPdf(file);
-          }}/>
-        </label>
-        <button className="primary-button" onClick={() => setEntries(current => [...current, emptyEntry()])} disabled={!house}><Plus size={17}/> Add item</button>
-      </div></div>
+      <div className="section-row"><div><h2 className="section-title">Master timetable</h2><p className="section-help">Editing {year?.label || "—"} → {schoolClass?.label || "—"} → {house?.label || "—"}. Save drafts safely, then publish when ready.</p></div><div className="form-actions"><label className="secondary-button" aria-disabled={!house || pdfImporting} style={{ opacity: !house || pdfImporting ? .55 : 1, cursor: !house || pdfImporting ? "not-allowed" : "pointer" }}><FileUp size={17}/>{pdfImporting ? "Importing PDF…" : "Import PDF"}<input type="file" accept="application/pdf,.pdf" hidden disabled={!house || pdfImporting} onChange={e => { const file = e.target.files?.[0]; e.currentTarget.value = ""; void importPdf(file); }}/></label><button className="primary-button" onClick={() => setEntries(current => [...current, emptyEntry()])} disabled={!house}><Plus size={17}/> Add item</button></div></div>
 
       {!house ? <div className="school-empty">Choose or create a valid class and house before editing a timetable.</div> : <>
-        <div className="notice" style={{ marginTop: 14 }}>
-          <strong>PDF importer:</strong> choose a text-based timetable PDF. MStudy will detect weekday + start/end-time rows and place them into the editor for review. It never publishes automatically.
-        </div>
+      <div className="notice" style={{ marginTop: 14 }}><strong>SES PDF importer:</strong> this is tuned to the two SES timetable layouts you supplied, including the horizontal day-row layout and the older day-column layout. If a PDF contains both Week One and Week Two, MStudy imports both automatically into Separate Weeks mode. Nothing is published until you review it.</div>
+      <div className="timetable-mode-row">
+        <label className="mode-switch"><input type="checkbox" checked={mode === "separate"} onChange={e => switchMode(e.target.checked ? "separate" : "all")}/><span><strong>Separate Weeks Timetable</strong><small>{mode === "separate" ? "Week 1 and Week 2 are different." : "Disabled: one All Weeks timetable is used every week."}</small></span></label>
+      </div>
 
-        <div className="timetable-mode-row">
-          <label className="mode-switch"><input type="checkbox" checked={mode === "separate"} onChange={e => switchMode(e.target.checked ? "separate" : "all")}/><span>
-            <strong>Separate Weeks Timetable</strong>
-            <small>{mode === "separate" ? "Week 1 and Week 2 are different." : "One All Weeks timetable is used every week."}</small>
-          </span></label>
-        </div>
+      <div className="week-tabs" role="tablist" aria-label="Timetable week">
+        {mode === "all" ? <button className="week-tab active" type="button">All Weeks</button> : <><button className={weekView === "week1" ? "week-tab active" : "week-tab"} type="button" onClick={() => setWeekView("week1")}>Week 1</button><button className={weekView === "week2" ? "week-tab active" : "week-tab"} type="button" onClick={() => setWeekView("week2")}>Week 2</button></>}
+      </div>
 
-        <div className="week-tabs" role="tablist" aria-label="Timetable week">
-          {mode === "all"
-            ? <button className="week-tab active" type="button">All Weeks</button>
-            : <>
-                <button className={weekView === "week1" ? "week-tab active" : "week-tab"} type="button" onClick={() => setWeekView("week1")}>Week 1</button>
-                <button className={weekView === "week2" ? "week-tab active" : "week-tab"} type="button" onClick={() => setWeekView("week2")}>Week 2</button>
-              </>}
-        </div>
-
-        <div className="admin-timetable-list">
-          {sortedEntries.map(entry => <article className="admin-timetable-row" key={entry.id}>
-            <select value={entry.day} onChange={e => updateEntry(entry.id, "day", e.target.value)}>{days.map(day => <option key={day}>{day}</option>)}</select>
-            <input value={entry.startTime} type="time" onChange={e => updateEntry(entry.id, "startTime", e.target.value)}/>
-            <input value={entry.endTime} type="time" onChange={e => updateEntry(entry.id, "endTime", e.target.value)}/>
-            <input value={entry.subject} placeholder="Subject / activity" onChange={e => updateEntry(entry.id, "subject", e.target.value)}/>
-            <input value={entry.room} placeholder="Room" onChange={e => updateEntry(entry.id, "room", e.target.value)}/>
-            <input value={entry.teacher} placeholder="Teacher" onChange={e => updateEntry(entry.id, "teacher", e.target.value)}/>
-            <button className="icon-button danger" aria-label={`Delete ${entry.subject || "timetable item"}`} onClick={() => setEntries(current => current.filter(item => item.id !== entry.id))}><Trash2 size={15}/></button>
-          </article>)}
-        </div>
-
-        {entries.length === 0 ? <div className="empty-state"><strong>No timetable items yet</strong><span>Add the first item or import a PDF.</span></div> : null}
-
-        <div className="form-actions">
-          <button className="text-button" onClick={() => void saveDraft()}><Save size={15}/> Save draft</button>
-          <button className="primary-button" onClick={() => void publish()}><Upload size={16}/> Publish timetable</button>
-        </div>
+      <div className="admin-timetable-list">{sortedEntries.map(entry => <article className="admin-timetable-row" key={entry.id}>
+        <select value={entry.day} onChange={e => updateEntry(entry.id, "day", e.target.value)}>{days.map(day => <option key={day}>{day}</option>)}</select>
+        <input value={entry.startTime} type="time" onChange={e => updateEntry(entry.id, "startTime", e.target.value)}/>
+        <input value={entry.endTime} type="time" onChange={e => updateEntry(entry.id, "endTime", e.target.value)}/>
+        <input value={entry.subject} placeholder="Subject / activity" onChange={e => updateEntry(entry.id, "subject", e.target.value)}/>
+        <input value={entry.room} placeholder="Room" onChange={e => updateEntry(entry.id, "room", e.target.value)}/>
+        <input value={entry.teacher} placeholder="Teacher" onChange={e => updateEntry(entry.id, "teacher", e.target.value)}/>
+        <button className="icon-button danger" aria-label={`Delete ${entry.subject || "timetable item"}`} onClick={() => setEntries(current => current.filter(item => item.id !== entry.id))}><Trash2 size={15}/></button>
+      </article>)}</div>
+      {entries.length === 0 ? <div className="empty-state"><strong>No timetable items yet</strong><span>Add the first lesson, break or activity for {mode === "separate" ? (weekView === "week1" ? "Week 1" : "Week 2") : "All Weeks"}, or import an SES PDF.</span></div> : null}
+      <div className="form-actions"><button className="text-button" onClick={saveDraft}><Save size={15}/> Save draft</button><button className="primary-button" onClick={publish}><Upload size={16}/> Publish timetable</button></div>
       </>}
     </section>
   </section>;
