@@ -1,4 +1,4 @@
-import { collection, deleteDoc, doc, getDoc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
+import { deleteDoc, doc, getDoc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 export type House = { id: string; label: string };
@@ -24,14 +24,20 @@ export type SchoolTimetableEntry = {
   type?: string;
   notes?: string;
 };
+export type TimetableMode = "all" | "separate";
 export type SchoolTimetable = {
   id: string;
   schoolId: string;
   yearId: string;
   classId: string;
   houseId: string;
+  mode?: TimetableMode;
   draftEntries: SchoolTimetableEntry[];
   publishedEntries: SchoolTimetableEntry[];
+  draftWeek1Entries?: SchoolTimetableEntry[];
+  draftWeek2Entries?: SchoolTimetableEntry[];
+  publishedWeek1Entries?: SchoolTimetableEntry[];
+  publishedWeek2Entries?: SchoolTimetableEntry[];
   updatedAt?: unknown;
   publishedAt?: unknown;
 };
@@ -96,19 +102,39 @@ export function subscribeTimetable(selection: SchoolSelection, callback: (value:
   return onSnapshot(doc(db, "schoolTimetables", timetableId(selection)), snap => callback(snap.exists() ? ({ id: snap.id, ...snap.data() } as SchoolTimetable) : null));
 }
 
-export async function saveDraftTimetable(selection: SchoolSelection, entries: SchoolTimetableEntry[]) {
+export async function saveDraftTimetable(
+  selection: SchoolSelection,
+  mode: TimetableMode,
+  allEntries: SchoolTimetableEntry[],
+  week1Entries: SchoolTimetableEntry[],
+  week2Entries: SchoolTimetableEntry[],
+) {
   await setDoc(doc(db, "schoolTimetables", timetableId(selection)), {
     ...selection,
-    draftEntries: entries,
+    mode,
+    draftEntries: allEntries,
+    draftWeek1Entries: week1Entries,
+    draftWeek2Entries: week2Entries,
     updatedAt: serverTimestamp(),
   }, { merge: true });
 }
 
-export async function publishTimetable(selection: SchoolSelection, entries: SchoolTimetableEntry[]) {
+export async function publishTimetable(
+  selection: SchoolSelection,
+  mode: TimetableMode,
+  allEntries: SchoolTimetableEntry[],
+  week1Entries: SchoolTimetableEntry[],
+  week2Entries: SchoolTimetableEntry[],
+) {
   await setDoc(doc(db, "schoolTimetables", timetableId(selection)), {
     ...selection,
-    draftEntries: entries,
-    publishedEntries: entries,
+    mode,
+    draftEntries: allEntries,
+    publishedEntries: allEntries,
+    draftWeek1Entries: week1Entries,
+    draftWeek2Entries: week2Entries,
+    publishedWeek1Entries: week1Entries,
+    publishedWeek2Entries: week2Entries,
     updatedAt: serverTimestamp(),
     publishedAt: serverTimestamp(),
   }, { merge: true });
