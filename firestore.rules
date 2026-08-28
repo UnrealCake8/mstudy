@@ -40,7 +40,7 @@ service cloud.firestore {
       allow delete: if uid == request.auth.uid || isAdmin();
     }
     match /conversations/{conversationId} {
-      allow read: if conversationMember(conversationId) || isAdmin();
+      allow read: if (signedIn() && request.auth.uid in resource.data.members) || isAdmin();
       allow create: if chatEnabled() && request.auth.uid in request.resource.data.members && request.resource.data.createdBy == request.auth.uid && request.resource.data.members.size() >= 2 && request.resource.data.members.size() <= 20;
       allow update: if isAdmin() || (conversationMember(conversationId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastMessage','lastSenderUid','updatedAt'])) || (conversationMember(conversationId) && resource.data.type == 'group' && resource.data.ownerUid == request.auth.uid);
       allow delete: if isAdmin() || (conversationMember(conversationId) && resource.data.ownerUid == request.auth.uid);

@@ -98,23 +98,31 @@ export function subscribeMessages(conversationId: string, callback: (items: Chat
 }
 
 export async function createDirectConversation(me: ChatProfile, other: ChatProfile) {
+  const existingSnap = await getDocs(
+    query(collection(db, "conversations"), where("members", "array-contains", me.uid), limit(100))
+  );
+  const existing = existingSnap.docs.find(item => {
+    const data = item.data() as ChatConversation;
+    return data.type === "direct"
+      && data.members?.length === 2
+      && data.members.includes(me.uid)
+      && data.members.includes(other.uid);
+  });
+  if (existing) return existing.id;
+
   const members = [me.uid, other.uid].sort();
-  const id = `dm_${members.join("_")}`;
-  const ref = doc(db, "conversations", id);
-  if (!(await getDoc(ref)).exists()) {
-    await setDoc(ref, {
-      type: "direct",
-      title: "",
-      members,
-      ownerUid: me.uid,
-      createdBy: me.uid,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-      lastMessage: "",
-      lastSenderUid: "",
-    });
-  }
-  return id;
+  const ref = await addDoc(collection(db, "conversations"), {
+    type: "direct",
+    title: "",
+    members,
+    ownerUid: me.uid,
+    createdBy: me.uid,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    lastMessage: "",
+    lastSenderUid: "",
+  });
+  return ref.id;
 }
 
 export async function createGroupConversation(ownerUid: string, title: string, memberUids: string[]) {
