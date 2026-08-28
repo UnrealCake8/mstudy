@@ -1,78 +1,21 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Building2, Pencil, Plus, School, Trash2 } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { FormEvent, useEffect, useState } from "react";
+import { Building2, ExternalLink, Pencil, Plus, Trash2 } from "lucide-react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { addItem, deleteItem, subscribeCollection, TimetableClass, updateItem } from "@/lib/data";
-import {
-  DEFAULT_SES,
-  isSesStudent,
-  resolveSelection,
-  roomLocation,
-  saveSchoolSelection,
-  SchoolConfig,
-  SchoolSelection,
-  SchoolTimetable,
-  SchoolTimetableEntry,
-  subscribeSchoolConfig,
-  subscribeSchoolSelection,
-  subscribeTimetable,
-} from "@/lib/school-data";
+import { DEFAULT_SES, roomLocation } from "@/lib/school-data";
 
 const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
-type StudentWeek = "week1" | "week2";
+const BASE_TIMETABLE_URL = "https://assets.mplace.cc/base-timetable/base.pdf";
 
 export function TimetablePage() {
   const { user } = useAuth();
-  const router = useRouter();
   const [items, setItems] = useState<TimetableClass[]>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<TimetableClass | null>(null);
-  const [config, setConfig] = useState<SchoolConfig | null>(null);
-  const [selection, setSelection] = useState<SchoolSelection | null>(null);
-  const [schoolTimetable, setSchoolTimetable] = useState<SchoolTimetable | null>(null);
-  const [studentWeek, setStudentWeek] = useState<StudentWeek>("week1");
-  const ses = isSesStudent(user?.email);
 
   useEffect(() => user ? subscribeCollection<TimetableClass>(user.uid, "timetable", setItems) : undefined, [user]);
-  useEffect(() => ses ? subscribeSchoolConfig("ses", value => setConfig(value || DEFAULT_SES)) : undefined, [ses]);
-  useEffect(() => user && ses ? subscribeSchoolSelection(user.uid, setSelection) : undefined, [user, ses]);
-
-  const effectiveSelection = useMemo<SchoolSelection | null>(() => config ? resolveSelection(config, selection) : null, [config, selection]);
-  const year = config?.years.find(item => item.id === effectiveSelection?.yearId);
-  const schoolClass = year?.classes.find(item => item.id === effectiveSelection?.classId);
-  const house = schoolClass?.houses.find(item => item.id === effectiveSelection?.houseId);
-
-  useEffect(() => effectiveSelection ? subscribeTimetable(effectiveSelection, setSchoolTimetable) : undefined, [effectiveSelection]);
-
-  useEffect(() => {
-    if (!user || !config || !effectiveSelection) return;
-    const broken = !selection || selection.schoolId !== effectiveSelection.schoolId || selection.yearId !== effectiveSelection.yearId || selection.classId !== effectiveSelection.classId || selection.houseId !== effectiveSelection.houseId;
-    if (!broken) return;
-    setSelection(effectiveSelection);
-    void saveSchoolSelection(user.uid, effectiveSelection);
-  }, [user, config, selection, effectiveSelection]);
-
-  const separateWeeks = schoolTimetable?.mode === "separate";
-  const schoolEntries: SchoolTimetableEntry[] = separateWeeks
-    ? (studentWeek === "week1" ? schoolTimetable?.publishedWeek1Entries || [] : schoolTimetable?.publishedWeek2Entries || [])
-    : schoolTimetable?.publishedEntries || [];
-
-  async function choose(next: Partial<SchoolSelection>) {
-    if (!user || !config) return;
-    const current = effectiveSelection;
-    const nextYearId = next.yearId || current?.yearId || config.years[0]?.id;
-    const nextYear = config.years.find(y => y.id === nextYearId);
-    const nextClassId = next.classId || (next.yearId ? nextYear?.classes[0]?.id : current?.classId) || nextYear?.classes[0]?.id;
-    const nextClass = nextYear?.classes.find(c => c.id === nextClassId);
-    const nextHouseId = next.houseId || (next.classId || next.yearId ? nextClass?.houses[0]?.id : current?.houseId) || nextClass?.houses[0]?.id;
-    if (!nextYearId || !nextClassId || !nextHouseId) return;
-    const value = { schoolId: config.id, yearId: nextYearId, classId: nextClassId, houseId: nextHouseId };
-    setSelection(value);
-    setStudentWeek("week1");
-    await saveSchoolSelection(user.uid, value);
-  }
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -93,24 +36,29 @@ export function TimetablePage() {
 
   function roomText(room: string) {
     if (!room) return "";
-    const found = roomLocation(room, config || DEFAULT_SES);
+    const found = roomLocation(room, DEFAULT_SES);
     return found && found.building !== "Unknown building" ? `${found.code} · ${found.building}` : room;
   }
 
   return <section className="page">
     <div className="page-head">
-      <div><p className="eyebrow">Your week</p><h1>Timetable</h1><p>{ses ? "Use your SES class timetable and add your own personal changes." : "Build the school week you actually follow."}</p></div>
+      <div><p className="eyebrow">Your week</p><h1>Timetable</h1><p>View the shared school timetable and keep your personal timetable underneath.</p></div>
       <button className="primary-button" onClick={() => { setEditing(null); setOpen(v => !v); }}><Plus size={17}/> Add class</button>
     </div>
 
-    {ses && config ? <section className="school-setup-card">
-      <div className="section-row"><div><span className="school-source-badge"><School size={14}/> Sharjah English School</span><h2 className="section-title">School timetable</h2><p className="section-help">Choose your year, class and house. Broken or deleted Firebase selections are repaired automatically.</p></div></div>
-      {effectiveSelection && year && schoolClass && house ? <div className="school-setup-grid">
-        <label>Year<select value={year.id} onChange={e => void choose({ yearId: e.target.value })}>{config.years.map(y => <option key={y.id} value={y.id}>{y.label}</option>)}</select></label>
-        <label>Class<select value={schoolClass.id} onChange={e => void choose({ classId: e.target.value })}>{year.classes.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}</select></label>
-        <label>House<select value={house.id} onChange={e => void choose({ houseId: e.target.value })}>{schoolClass.houses.map(h => <option key={h.id} value={h.id}>{h.label}</option>)}</select></label>
-      </div> : <div className="school-empty">No valid class and house are configured yet. Ask an MStudy admin to add one.</div>}
-    </section> : null}
+    <section className="school-week">
+      <div className="section-row">
+        <div><h2 className="section-title">School timetable</h2><p className="section-help">This is the shared base timetable shown to everyone.</p></div>
+        <a className="text-button" href={BASE_TIMETABLE_URL} target="_blank" rel="noreferrer"><ExternalLink size={15}/> Open PDF</a>
+      </div>
+      <div style={{ width: "100%", minHeight: 720, borderRadius: 18, overflow: "hidden", border: "1px solid var(--line)", background: "var(--surface)" }}>
+        <iframe
+          src={BASE_TIMETABLE_URL}
+          title="Shared school timetable"
+          style={{ width: "100%", height: "78vh", minHeight: 720, border: 0, display: "block" }}
+        />
+      </div>
+    </section>
 
     {open ? <form className="editor-card compact" onSubmit={submit}>
       <input name="subject" placeholder="Subject" defaultValue={editing?.subject || ""} required/>
@@ -122,14 +70,8 @@ export function TimetablePage() {
       <button className="primary-button">{editing ? "Save changes" : "Save class"}</button>
     </form> : null}
 
-    {ses && effectiveSelection && year && schoolClass && house ? <section className="school-week">
-      <div className="section-row"><div><h2 className="section-title">Published school timetable</h2><p className="section-help">{year.label} → {schoolClass.label} → {house.label}{separateWeeks ? ` · ${studentWeek === "week1" ? "Week 1" : "Week 2"}` : " · All Weeks"}</p></div></div>
-      {separateWeeks ? <div className="week-tabs" role="tablist" aria-label="Choose timetable week"><button className={studentWeek === "week1" ? "week-tab active" : "week-tab"} type="button" onClick={() => setStudentWeek("week1")}>Week 1</button><button className={studentWeek === "week2" ? "week-tab active" : "week-tab"} type="button" onClick={() => setStudentWeek("week2")}>Week 2</button></div> : <div className="week-tabs"><span className="week-tab active">All Weeks</span></div>}
-      {schoolEntries.length === 0 ? <div className="school-empty">No published timetable has been added for {separateWeeks ? (studentWeek === "week1" ? "Week 1" : "Week 2") : "this class and house"} yet.</div> : <div className="week-grid">{days.map(day => <section className="day-column" key={day}><h2>{day}</h2>{schoolEntries.filter(i => i.day === day).sort((a,b) => a.startTime.localeCompare(b.startTime)).map(i => <article className="class-card" key={i.id}><div><strong>{i.subject || i.type || "School activity"}</strong><span>{i.startTime}–{i.endTime}</span><small>{i.room ? <button className="room-link" onClick={() => router.push(`/class-locator?room=${encodeURIComponent(i.room)}`)}>{roomText(i.room)}</button> : null}{i.teacher ? <span>{i.teacher}</span> : null}</small></div></article>)}</section>)}</div>}
-    </section> : null}
-
     <section className="school-week">
-      <div className="section-row"><div><h2 className="section-title">{ses ? "My personal timetable" : "My timetable"}</h2><p className="section-help">These classes belong only to you and can be edited or deleted at any time.</p></div></div>
+      <div className="section-row"><div><h2 className="section-title">My personal timetable</h2><p className="section-help">These classes belong only to you and can be edited or deleted at any time.</p></div></div>
       <div className="week-grid">{days.map(day => <section className="day-column" key={day}><h2>{day}</h2>{items.filter(i => i.day === day).sort((a,b) => a.startTime.localeCompare(b.startTime)).map(i => <article className="class-card" key={i.id}><div><strong>{i.subject}</strong><span>{i.startTime}–{i.endTime}</span><small>{i.room ? <span className="school-room-meta"><Building2 size={12}/> {roomText(i.room)}</span> : null}{i.teacher ? <span>{i.teacher}</span> : null}</small></div><div><button className="icon-button" aria-label={`Edit ${i.subject}`} onClick={() => edit(i)}><Pencil size={15}/></button><button className="icon-button danger" aria-label={`Delete ${i.subject}`} onClick={() => user && deleteItem(user.uid, "timetable", i.id)}><Trash2 size={15}/></button></div></article>)}</section>)}</div>
     </section>
   </section>;
