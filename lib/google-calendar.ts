@@ -2,7 +2,7 @@
 
 import { GoogleAuthProvider, reauthenticateWithPopup, type User } from "firebase/auth";
 
-const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.readonly";
+const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.events.readonly";
 
 export type GoogleCalendarEvent = {
   id: string;
@@ -15,10 +15,6 @@ export type GoogleCalendarEvent = {
   end: string;
   allDay: boolean;
   htmlLink?: string;
-};
-
-type CalendarListResponse = {
-  items?: Array<{ id?: string; summary?: string; primary?: boolean; selected?: boolean; accessRole?: string }>;
 };
 
 type EventListResponse = {
@@ -60,20 +56,20 @@ function friendlyError(error: unknown) {
   return error instanceof Error ? error : new Error("Could not connect Google Calendar.");
 }
 
-async function eventsForCalendar(calendarId: string, calendarName: string, token: string, timeMin: string, timeMax: string) {
+async function eventsForPrimaryCalendar(token: string, timeMin: string, timeMax: string) {
   const events: GoogleCalendarEvent[] = [];
   let pageToken = "";
   do {
     const qs = new URLSearchParams({ singleEvents: "true", orderBy: "startTime", timeMin, timeMax, maxResults: "250" });
     if (pageToken) qs.set("pageToken", pageToken);
-    const data = await googleFetch<EventListResponse>(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${qs.toString()}`, token);
+    const data = await googleFetch<EventListResponse>(`https://www.googleapis.com/calendar/v3/calendars/primary/events?${qs.toString()}`, token);
     for (const item of data.items || []) {
       if (!item.id || item.status === "cancelled" || (!item.start?.dateTime && !item.start?.date)) continue;
       const allDay = Boolean(item.start.date && !item.start.dateTime);
       events.push({
         id: item.id,
-        calendarId,
-        calendarName,
+        calendarId: "primary",
+        calendarName: "Primary calendar",
         title: item.summary || "Untitled event",
         description: item.description || "",
         location: item.location || "",
@@ -95,15 +91,13 @@ export async function loadGoogleCalendar(user: User, daysAhead = 14) {
     const token = credential?.accessToken;
     if (!token) throw new Error("Google did not return Calendar access. Try connecting again.");
 
-    const calendars = await googleFetch<CalendarListResponse>("https://www.googleapis.com/calendar/v3/users/me/calendarList?minAccessRole=reader", token);
-    const visible = (calendars.items || []).filter(item => item.id && item.selected !== false && item.accessRole !== "freeBusyReader");
     const start = new Date();
     start.setHours(0, 0, 0, 0);
     const end = new Date(start);
     end.setDate(end.getDate() + daysAhead);
 
-    const groups = await Promise.all(visible.map(item => eventsForCalendar(item.id!, item.summary || (item.primary ? "Primary calendar" : "Calendar"), token, start.toISOString(), end.toISOString()).catch(() => [])));
-    return { googleEmail: result.user.email || user.email || "Google account", events: groups.flat().sort((a,b) => a.start.localeCompare(b.start)) };
+    const events = await eventsForPrimaryCalendar(token, start.toISOString(), end.toISOString());
+    return { googleEmail: result.user.email || user.email || "Google account", events: events.sort((a,b) => a.start.localeCompare(b.start)) };
   } catch (error) {
     throw friendlyError(error);
   }
