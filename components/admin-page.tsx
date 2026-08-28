@@ -60,10 +60,10 @@ type PdfJs = {
 const PDFJS_VERSION = "3.11.174";
 
 function pdfWindow() {
-  return window as typeof window & { pdfjsLib?: PdfJs };
+  return window as unknown as { pdfjsLib?: PdfJs };
 }
 
-async function loadPdfJs() {
+async function loadPdfJs(): Promise<PdfJs> {
   const browser = pdfWindow();
   if (browser.pdfjsLib) return browser.pdfjsLib;
 
@@ -244,8 +244,8 @@ async function extractPdfPages(file: File) {
     const page = await pdf.getPage(pageNumber);
     const content = await page.getTextContent();
     const positioned = content.items
-      .filter(item => item.str?.trim() && Array.isArray(item.transform))
-      .map(item => ({
+      .filter((item: PdfTextItem) => item.str?.trim() && Array.isArray(item.transform))
+      .map((item: PdfTextItem) => ({
         text: item.str!.trim(),
         x: item.transform![4] || 0,
         y: item.transform![5] || 0,
