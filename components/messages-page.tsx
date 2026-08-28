@@ -43,21 +43,22 @@ export function MessagesPage() {
 
   useEffect(() => {
     if (!user?.email) return;
+    const email = user.email;
     void (async () => {
       try {
-        const ok = await isChatDomainAllowed(user.email);
+        const ok = await isChatDomainAllowed(email);
         setAllowed(ok);
         if (!ok) return;
-        await ensureChatProfile(user.uid, user.email, user.displayName);
+        await ensureChatProfile(user.uid, email, user.displayName);
         const all = await listChatProfiles();
         setProfiles(all);
         setProfile(
           all.find(item => item.uid === user.uid) || {
             uid: user.uid,
-            name: user.displayName || user.email.split("@")[0],
-            email: user.email,
-            domain: user.email.split("@")[1],
-            nameLower: (user.displayName || user.email.split("@")[0]).toLowerCase(),
+            name: user.displayName || email.split("@")[0],
+            email,
+            domain: email.split("@")[1],
+            nameLower: (user.displayName || email.split("@")[0]).toLowerCase(),
           }
         );
       } catch (error) {
