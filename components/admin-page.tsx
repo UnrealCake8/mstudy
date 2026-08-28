@@ -56,13 +56,36 @@ export function AdminPage() {
   useEffect(() => { if (user) void checkAdminAccess(); }, [user]);
   useEffect(() => subscribeSchoolConfig("ses", setConfig), []);
 
+  useEffect(() => {
+    if (!config) return;
+    const validYear = config.years.find(item => item.id === yearId) || config.years[0];
+    if (!validYear) {
+      if (yearId || classId || houseId) {
+        setYearId("");
+        setClassId("");
+        setHouseId("");
+      }
+      return;
+    }
+    const validClass = validYear.classes.find(item => item.id === classId) || validYear.classes[0];
+    const validHouse = validClass?.houses.find(item => item.id === houseId) || validClass?.houses[0];
+    if (yearId !== validYear.id) setYearId(validYear.id);
+    if (classId !== (validClass?.id || "")) setClassId(validClass?.id || "");
+    if (houseId !== (validHouse?.id || "")) setHouseId(validHouse?.id || "");
+  }, [config, yearId, classId, houseId]);
+
   const year = config?.years.find(item => item.id === yearId);
   const schoolClass = year?.classes.find(item => item.id === classId);
   const house = schoolClass?.houses.find(item => item.id === houseId);
   const selection: SchoolSelection = { schoolId: "ses", yearId, classId, houseId };
 
   useEffect(() => {
-    if (!allowed || !config || !year || !schoolClass || !house) return;
+    if (!allowed || !config || !year || !schoolClass || !house) {
+      setAllEntries([]);
+      setWeek1Entries([]);
+      setWeek2Entries([]);
+      return;
+    }
     return subscribeTimetable(selection, value => {
       const nextMode = value?.mode === "separate" ? "separate" : "all";
       setMode(nextMode);
@@ -96,13 +119,16 @@ export function AdminPage() {
     if (!label || !config) return;
     const id = label.toLowerCase().replace(/\s+/g, "");
     await persistConfig({ ...config, years: [...config.years, { id, label, classes: [] }] });
+    setYearId(id);
+    setClassId("");
+    setHouseId("");
   }
 
   async function addClass() {
     const label = window.prompt("Class label, e.g. 8H");
     if (!label || !config || !year) return;
     const nextClass: SchoolClass = { id: label.toLowerCase().replace(/\s+/g, ""), label, houses: [] };
-    const years = config.years.map(y => y.id === year.id ? { ...y, classes: [...y.classes, nextClass] } : y);
+    const years = config.years.map(y => y.id === year.id ? { ...y, classes: [...y.classes.filter(c => c.id !== nextClass.id), nextClass] } : y);
     await persistConfig({ ...config, years });
     setClassId(nextClass.id);
     setHouseId("");
@@ -113,18 +139,21 @@ export function AdminPage() {
     if (!window.confirm(`Delete ${schoolClass.label}? This removes the class from the school selector. Existing timetable documents are left untouched for safety.`)) return;
     const remaining = year.classes.filter(c => c.id !== schoolClass.id);
     const years = config.years.map(y => y.id === year.id ? { ...y, classes: remaining } : y);
+    const deletedLabel = schoolClass.label;
     await persistConfig({ ...config, years });
-    setClassId(remaining[0]?.id || "");
-    setHouseId(remaining[0]?.houses[0]?.id || "");
-    setStatus(`${schoolClass.label} deleted.`);
+    const fallback = remaining[0];
+    setClassId(fallback?.id || "");
+    setHouseId(fallback?.houses[0]?.id || "");
+    setStatus(`${deletedLabel} deleted. Any stale selections will repair themselves automatically.`);
   }
 
   async function addHouse() {
     const label = window.prompt("House name");
     if (!label || !config || !year || !schoolClass) return;
     const nextHouse: House = { id: label.toLowerCase().replace(/\s+/g, "-"), label };
-    const years = config.years.map(y => y.id === year.id ? { ...y, classes: y.classes.map(c => c.id === schoolClass.id ? { ...c, houses: [...c.houses, nextHouse] } : c) } : y);
+    const years = config.years.map(y => y.id === year.id ? { ...y, classes: y.classes.map(c => c.id === schoolClass.id ? { ...c, houses: [...c.houses.filter(h => h.id !== nextHouse.id), nextHouse] } : c) } : y);
     await persistConfig({ ...config, years });
+    setHouseId(nextHouse.id);
   }
 
   async function addPrefix() {
@@ -154,13 +183,15 @@ export function AdminPage() {
   }
 
   async function saveDraft() {
+    if (!year || !schoolClass || !house) return;
     await saveDraftTimetable(selection, mode, allEntries, week1Entries, week2Entries);
     setStatus("Draft saved. Students still see the last published version.");
   }
 
   async function publish() {
+    if (!year || !schoolClass || !house) return;
     await publishTimetable(selection, mode, allEntries, week1Entries, week2Entries);
-    setStatus(`Published ${mode === "separate" ? "Week 1 and Week 2" : "All Weeks"} to ${year?.label} → ${schoolClass?.label} → ${house?.label}.`);
+    setStatus(`Published ${mode === "separate" ? "Week 1 and Week 2" : "All Weeks"} to ${year.label} → ${schoolClass.label} → ${house.label}.`);
   }
 
   if (!config) return <section className="page"><div className="admin-lock"><h1>Set up MStudy school data</h1><p>No SES school configuration exists yet.</p><button className="primary-button" onClick={initialise}><Plus size={17}/> Initialise SES</button></div></section>;
@@ -170,11 +201,12 @@ export function AdminPage() {
     {status ? <div className="notice">{status}</div> : null}
 
     <section className="admin-section">
-      <div className="section-row"><div><h2 className="section-title">School structure</h2><p className="section-help">Add years, classes and houses without changing the code.</p></div></div>
+      <div className="section-row"><div><h2 className="section-title">School structure</h2><p className="section-help">Add years, classes and houses without changing the code. Invalid Firebase references are repaired automatically.</p></div></div>
+      {config.years.length === 0 ? <div className="school-empty">No valid years remain. Use Add year to rebuild the structure.</div> : null}
       <div className="admin-select-grid">
         <label>Year<select value={yearId} onChange={e => { const next = e.target.value; setYearId(next); const y = config.years.find(item => item.id === next); setClassId(y?.classes[0]?.id || ""); setHouseId(y?.classes[0]?.houses[0]?.id || ""); }}>{config.years.map(y => <option key={y.id} value={y.id}>{y.label}</option>)}</select></label>
-        <label>Class<select value={classId} onChange={e => { const next = e.target.value; setClassId(next); const c = year?.classes.find(item => item.id === next); setHouseId(c?.houses[0]?.id || ""); }}>{year?.classes.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}</select></label>
-        <label>House<select value={houseId} onChange={e => setHouseId(e.target.value)}>{schoolClass?.houses.map(h => <option key={h.id} value={h.id}>{h.label}</option>)}</select></label>
+        <label>Class<select value={classId} onChange={e => { const next = e.target.value; setClassId(next); const c = year?.classes.find(item => item.id === next); setHouseId(c?.houses[0]?.id || ""); }} disabled={!year}>{year?.classes.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}</select></label>
+        <label>House<select value={houseId} onChange={e => setHouseId(e.target.value)} disabled={!schoolClass}>{schoolClass?.houses.map(h => <option key={h.id} value={h.id}>{h.label}</option>)}</select></label>
       </div>
       <div className="form-actions"><button className="text-button" onClick={addYear}><Plus size={15}/> Add year</button><button className="text-button" onClick={addClass} disabled={!year}><Plus size={15}/> Add class</button><button className="text-button danger" onClick={deleteClass} disabled={!schoolClass}><Trash2 size={15}/> Delete class</button><button className="text-button" onClick={addHouse} disabled={!schoolClass}><Plus size={15}/> Add house</button></div>
     </section>
@@ -187,6 +219,7 @@ export function AdminPage() {
     <section className="admin-section">
       <div className="section-row"><div><h2 className="section-title">Master timetable</h2><p className="section-help">Editing {year?.label || "—"} → {schoolClass?.label || "—"} → {house?.label || "—"}. Save drafts safely, then publish when ready.</p></div><button className="primary-button" onClick={() => setEntries(current => [...current, emptyEntry()])} disabled={!house}><Plus size={17}/> Add item</button></div>
 
+      {!house ? <div className="school-empty">Choose or create a valid class and house before editing a timetable.</div> : <>
       <div className="timetable-mode-row">
         <label className="mode-switch"><input type="checkbox" checked={mode === "separate"} onChange={e => switchMode(e.target.checked ? "separate" : "all")}/><span><strong>Separate Weeks Timetable</strong><small>{mode === "separate" ? "Week 1 and Week 2 are different." : "Disabled: one All Weeks timetable is used every week."}</small></span></label>
       </div>
@@ -205,7 +238,8 @@ export function AdminPage() {
         <button className="icon-button danger" aria-label={`Delete ${entry.subject || "timetable item"}`} onClick={() => setEntries(current => current.filter(item => item.id !== entry.id))}><Trash2 size={15}/></button>
       </article>)}</div>
       {entries.length === 0 ? <div className="empty-state"><strong>No timetable items yet</strong><span>Add the first lesson, break or activity for {mode === "separate" ? (weekView === "week1" ? "Week 1" : "Week 2") : "All Weeks"}.</span></div> : null}
-      <div className="form-actions"><button className="text-button" onClick={saveDraft} disabled={!house}><Save size={15}/> Save draft</button><button className="primary-button" onClick={publish} disabled={!house}><Upload size={16}/> Publish timetable</button></div>
+      <div className="form-actions"><button className="text-button" onClick={saveDraft}><Save size={15}/> Save draft</button><button className="primary-button" onClick={publish}><Upload size={16}/> Publish timetable</button></div>
+      </>}
     </section>
   </section>;
 }
