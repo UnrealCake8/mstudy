@@ -26,6 +26,7 @@ const emptyEntry = (): SchoolTimetableEntry => ({ id: crypto.randomUUID(), day: 
 export function AdminPage() {
   const { user } = useAuth();
   const [allowed, setAllowed] = useState<boolean | null>(null);
+  const [accessError, setAccessError] = useState("");
   const [config, setConfig] = useState<SchoolConfig | null>(null);
   const [yearId, setYearId] = useState("year8");
   const [classId, setClassId] = useState("8g");
@@ -33,7 +34,20 @@ export function AdminPage() {
   const [entries, setEntries] = useState<SchoolTimetableEntry[]>([]);
   const [status, setStatus] = useState("");
 
-  useEffect(() => { if (user) void isAdmin(user.uid).then(setAllowed).catch(() => setAllowed(false)); }, [user]);
+  async function checkAdminAccess() {
+    if (!user) return;
+    setAllowed(null);
+    setAccessError("");
+    try {
+      setAllowed(await isAdmin(user.uid));
+    } catch (error) {
+      const code = typeof error === "object" && error && "code" in error ? String((error as { code?: unknown }).code || "") : "";
+      setAccessError(code || "Unable to read the admin record from Firestore.");
+      setAllowed(false);
+    }
+  }
+
+  useEffect(() => { if (user) void checkAdminAccess(); }, [user]);
   useEffect(() => subscribeSchoolConfig("ses", setConfig), []);
 
   const year = config?.years.find(item => item.id === yearId);
@@ -49,7 +63,7 @@ export function AdminPage() {
   const sortedEntries = useMemo(() => [...entries].sort((a,b) => days.indexOf(a.day) - days.indexOf(b.day) || a.startTime.localeCompare(b.startTime)), [entries]);
 
   if (allowed === null) return <section className="page"><p>Checking admin access…</p></section>;
-  if (!allowed) return <section className="page"><div className="admin-lock"><ShieldCheck size={30}/><h1>Admin access required</h1><p>Your Firebase user UID must exist in the Firestore <code>admins</code> collection before this panel can be used.</p></div></section>;
+  if (!allowed) return <section className="page"><div className="admin-lock"><ShieldCheck size={30}/><h1>Admin access required</h1><p>MStudy is checking for a Firestore document at <code>admins/{user?.uid}</code>.</p>{user?.uid ? <p><strong>Your current Firebase UID:</strong><br/><code>{user.uid}</code></p> : null}{accessError ? <p><strong>Firestore error:</strong> <code>{accessError}</code></p> : <p>No admin document was found for this signed-in account.</p>}<p>Make sure the document ID exactly matches this UID and that it is in the same Firebase project used by this MStudy deployment.</p><button className="primary-button" onClick={() => void checkAdminAccess()}>Check again</button></div></section>;
 
   async function initialise() {
     await seedSesConfig();
