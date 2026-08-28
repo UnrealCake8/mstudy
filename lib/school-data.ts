@@ -64,6 +64,73 @@ export const DEFAULT_SES: SchoolConfig = {
   ],
 };
 
+function cleanString(value: unknown, fallback = "") {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function normalizeSchoolConfig(id: string, raw: Record<string, unknown>): SchoolConfig {
+  const yearsRaw = Array.isArray(raw.years) ? raw.years : [];
+  const years: SchoolYear[] = yearsRaw.flatMap((year): SchoolYear[] => {
+    if (!year || typeof year !== "object") return [];
+    const y = year as Record<string, unknown>;
+    const yearId = cleanString(y.id);
+    if (!yearId) return [];
+    const classesRaw = Array.isArray(y.classes) ? y.classes : [];
+    const classes: SchoolClass[] = classesRaw.flatMap((schoolClass): SchoolClass[] => {
+      if (!schoolClass || typeof schoolClass !== "object") return [];
+      const c = schoolClass as Record<string, unknown>;
+      const classId = cleanString(c.id);
+      if (!classId) return [];
+      const housesRaw = Array.isArray(c.houses) ? c.houses : [];
+      const houses: House[] = housesRaw.flatMap((house): House[] => {
+        if (!house || typeof house !== "object") return [];
+        const h = house as Record<string, unknown>;
+        const houseId = cleanString(h.id);
+        if (!houseId) return [];
+        return [{ id: houseId, label: cleanString(h.label, houseId) }];
+      });
+      return [{ id: classId, label: cleanString(c.label, classId.toUpperCase()), houses }];
+    });
+    return [{ id: yearId, label: cleanString(y.label, yearId), classes }];
+  });
+
+  const prefixesRaw = Array.isArray(raw.roomPrefixes) ? raw.roomPrefixes : [];
+  const roomPrefixes: RoomPrefix[] = prefixesRaw.flatMap((item): RoomPrefix[] => {
+    if (!item || typeof item !== "object") return [];
+    const p = item as Record<string, unknown>;
+    const prefix = cleanString(p.prefix).toUpperCase();
+    const building = cleanString(p.building);
+    return prefix && building ? [{ prefix, building }] : [];
+  });
+
+  return {
+    id,
+    name: cleanString(raw.name, id === SES_ID ? DEFAULT_SES.name : id),
+    domains: Array.isArray(raw.domains) ? raw.domains.filter((v): v is string => typeof v === "string" && Boolean(v.trim())).map(v => v.trim()) : [],
+    years,
+    roomPrefixes,
+  };
+}
+
+export function firstValidSelection(config: SchoolConfig): SchoolSelection | null {
+  for (const year of config.years) {
+    for (const schoolClass of year.classes) {
+      const house = schoolClass.houses[0];
+      if (house) return { schoolId: config.id, yearId: year.id, classId: schoolClass.id, houseId: house.id };
+    }
+  }
+  return null;
+}
+
+export function resolveSelection(config: SchoolConfig, selection?: SchoolSelection | null): SchoolSelection | null {
+  if (!selection) return firstValidSelection(config);
+  const year = config.years.find(item => item.id === selection.yearId);
+  const schoolClass = year?.classes.find(item => item.id === selection.classId);
+  const house = schoolClass?.houses.find(item => item.id === selection.houseId);
+  if (year && schoolClass && house) return { schoolId: config.id, yearId: year.id, classId: schoolClass.id, houseId: house.id };
+  return firstValidSelection(config);
+}
+
 export function timetableId(selection: SchoolSelection) {
   return [selection.schoolId, selection.yearId, selection.classId, selection.houseId].join("_");
 }
@@ -78,7 +145,7 @@ export async function isAdmin(uid: string) {
 }
 
 export function subscribeSchoolConfig(schoolId: string, callback: (value: SchoolConfig | null) => void) {
-  return onSnapshot(doc(db, "schools", schoolId), snap => callback(snap.exists() ? ({ id: snap.id, ...snap.data() } as SchoolConfig) : null));
+  return onSnapshot(doc(db, "schools", schoolId), snap => callback(snap.exists() ? normalizeSchoolConfig(snap.id, snap.data()) : null));
 }
 
 export async function saveSchoolConfig(config: SchoolConfig) {
