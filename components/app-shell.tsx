@@ -72,7 +72,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <nav className="side-nav">
         {nav.map(([href, label, Icon]) => <Link key={href} href={href} className={pathname === href ? "nav-link active" : "nav-link"}><Icon size={19}/><span>{label}</span></Link>)}
       </nav>
-      <a href="https://mplace.cc" className="mplace-family-link">Explore MPlace</a>
+      <a href="https://search.mplace.cc" className="mplace-family-link">Explore MPlace</a>
       <div className="user-block">
         <div className="avatar">{(user.displayName?.[0] ?? "S").toUpperCase()}</div>
         <div className="user-meta"><strong>{user.displayName ?? "Student"}</strong><small>{user.email}</small></div>
@@ -101,7 +101,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {nav.map(([href, label, Icon]) => <Link key={href} href={href} className={pathname === href ? "tablet-nav-link active" : "tablet-nav-link"}><Icon size={20}/><span>{label}</span></Link>)}
       </nav>
       <div className="tablet-nav-footer">
-        <a href="https://mplace.cc" className="secondary-button">Explore MPlace</a>
+        <a href="https://search.mplace.cc" className="secondary-button">Explore MPlace</a>
         <div className="tablet-user">
           <div className="avatar">{(user.displayName?.[0] ?? "S").toUpperCase()}</div>
           <div className="tablet-user-copy"><strong>{user.displayName ?? "Student"}</strong><small>{user.email}</small></div>
