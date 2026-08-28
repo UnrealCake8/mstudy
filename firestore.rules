@@ -1,84 +1,60 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function signedIn() {
-      return request.auth != null;
-    }
+    function signedIn(){ return request.auth != null; }
+    function isOwner(userId){ return signedIn() && request.auth.uid == userId; }
+    function isAdmin(){ return signedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)); }
+    function roomHost(roomId){ return signedIn() && exists(/databases/$(database)/documents/teamRooms/$(roomId)) && get(/databases/$(database)/documents/teamRooms/$(roomId)).data.hostUid == request.auth.uid; }
+    function inTeamRoom(roomId){ return signedIn() && exists(/databases/$(database)/documents/teamRooms/$(roomId)/players/$(request.auth.uid)); }
+    function builtinChatDomain(domain){ return domain == 'ses-students.org' || domain == 'sharjahenglishschool.org'; }
+    function validChatProfile(profile){ return signedIn() && request.auth.token.email.matches('.*@' + profile.domain) && (builtinChatDomain(profile.domain) || exists(/databases/$(database)/documents/chatDomains/$(profile.domain))); }
+    function chatEnabled(){ return signedIn() && exists(/databases/$(database)/documents/chatProfiles/$(request.auth.uid)); }
+    function conversationMember(conversationId){ return signedIn() && exists(/databases/$(database)/documents/conversations/$(conversationId)) && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.members; }
 
-    function isOwner(userId) {
-      return signedIn() && request.auth.uid == userId;
-    }
-
-    function isAdmin() {
-      return signedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
-    }
-
-    function roomHost(roomId) {
-      return signedIn()
-        && exists(/databases/$(database)/documents/teamRooms/$(roomId))
-        && get(/databases/$(database)/documents/teamRooms/$(roomId)).data.hostUid == request.auth.uid;
-    }
-
-    function inTeamRoom(roomId) {
-      return signedIn()
-        && exists(/databases/$(database)/documents/teamRooms/$(roomId)/players/$(request.auth.uid));
-    }
-
-    match /admins/{adminId} {
-      allow read: if signedIn() && (request.auth.uid == adminId || isAdmin());
-      allow create, update, delete: if isAdmin();
-    }
-
-    match /schools/{schoolId} {
-      allow read: if signedIn();
-      allow create, update, delete: if isAdmin();
-    }
-
-    match /schoolTimetables/{timetableId} {
-      allow read: if signedIn();
-      allow create, update, delete: if isAdmin();
-    }
+    match /admins/{adminId}{ allow read: if signedIn() && (request.auth.uid == adminId || isAdmin()); allow create,update,delete: if isAdmin(); }
+    match /schools/{schoolId}{ allow read: if signedIn(); allow create,update,delete: if isAdmin(); }
+    match /schoolTimetables/{id}{ allow read: if signedIn(); allow create,update,delete: if isAdmin(); }
 
     match /teamRooms/{roomId} {
-      // Public room state contains the lobby and current prompt, never answer keys.
       allow read: if signedIn();
       allow create: if signedIn() && request.resource.data.hostUid == request.auth.uid;
-      allow update, delete: if roomHost(roomId);
-
+      allow update,delete: if roomHost(roomId);
       match /players/{playerId} {
-        allow read: if roomHost(roomId) || inTeamRoom(roomId);
-        allow create: if signedIn()
-          && playerId == request.auth.uid
-          && request.resource.data.uid == request.auth.uid;
-        allow update: if roomHost(roomId)
-          || (signedIn()
-            && playerId == request.auth.uid
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'active']));
+        allow read: if signedIn();
+        allow create: if signedIn() && playerId == request.auth.uid && request.resource.data.uid == request.auth.uid && request.resource.data.score == 0 && request.resource.data.correct == 0 && request.resource.data.answered == 0;
+        allow update: if roomHost(roomId) || (signedIn() && playerId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','active']));
         allow delete: if roomHost(roomId) || (signedIn() && playerId == request.auth.uid);
       }
-
       match /answers/{answerId} {
         allow read: if roomHost(roomId) || inTeamRoom(roomId);
-        allow create: if inTeamRoom(roomId)
-          && request.resource.data.uid == request.auth.uid
-          && request.resource.data.processed == false
-          && request.resource.data.keys().hasOnly(['uid', 'questionIndex', 'choice', 'processed', 'answeredAt']);
-        allow update, delete: if roomHost(roomId);
+        allow create: if inTeamRoom(roomId) && request.resource.data.uid == request.auth.uid && request.resource.data.processed == false && request.resource.data.keys().hasOnly(['uid','questionIndex','choice','processed','answeredAt']);
+        allow update,delete: if roomHost(roomId);
       }
     }
+    match /teamRoomSecrets/{roomId}{ allow read,create,update,delete: if roomHost(roomId); }
 
-    // Full questions and answer keys are isolated from players.
-    match /teamRoomSecrets/{roomId} {
-      allow read, create, update, delete: if roomHost(roomId);
+    match /chatDomains/{domain}{ allow read: if signedIn(); allow create,update,delete: if isAdmin(); }
+    match /chatProfiles/{uid} {
+      allow read: if chatEnabled() || isAdmin();
+      allow create,update: if uid == request.auth.uid && validChatProfile(request.resource.data) && request.resource.data.uid == request.auth.uid;
+      allow delete: if uid == request.auth.uid || isAdmin();
     }
-
-    match /users/{userId} {
-      allow read, create, update: if isOwner(userId);
-      allow delete: if false;
-
-      match /{document=**} {
-        allow read, write: if isOwner(userId);
+    match /conversations/{conversationId} {
+      allow read: if conversationMember(conversationId) || isAdmin();
+      allow create: if chatEnabled() && request.auth.uid in request.resource.data.members && request.resource.data.createdBy == request.auth.uid && request.resource.data.members.size() >= 2 && request.resource.data.members.size() <= 20;
+      allow update: if isAdmin() || (conversationMember(conversationId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastMessage','lastSenderUid','updatedAt'])) || (conversationMember(conversationId) && resource.data.type == 'group' && resource.data.ownerUid == request.auth.uid);
+      allow delete: if isAdmin() || (conversationMember(conversationId) && resource.data.ownerUid == request.auth.uid);
+      match /messages/{messageId} {
+        allow read: if conversationMember(conversationId) || isAdmin();
+        allow create: if chatEnabled() && conversationMember(conversationId) && request.resource.data.senderUid == request.auth.uid && request.resource.data.text is string && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 2000;
+        allow update: if false;
+        allow delete: if isAdmin() || (conversationMember(conversationId) && resource.data.senderUid == request.auth.uid);
       }
     }
+    match /chatBlocks/{blockId} { allow read: if signedIn() && (resource.data.blockerUid == request.auth.uid || resource.data.blockedUid == request.auth.uid || isAdmin()); allow create: if signedIn() && request.resource.data.blockerUid == request.auth.uid; allow delete: if signedIn() && resource.data.blockerUid == request.auth.uid; allow update: if false; }
+    match /chatReports/{reportId} { allow create: if chatEnabled() && request.resource.data.reporterUid == request.auth.uid; allow read,update,delete: if isAdmin(); }
+    match /adminAuditLogs/{logId} { allow create,read: if isAdmin(); allow update,delete: if false; }
+
+    match /users/{userId}{ allow read,create,update: if isOwner(userId); allow delete: if false; match /{document=**}{ allow read,write: if isOwner(userId); } }
   }
 }
