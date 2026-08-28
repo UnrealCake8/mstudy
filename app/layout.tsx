@@ -4,6 +4,7 @@ import { MAdsTransitions } from "@/components/mads-transitions";
 import "./globals.css";
 import "./theme.css";
 import "./mplace-brand.css";
+import "./timetable-calendar.css";
 
 export const metadata: Metadata = {
   title: { default: "MStudy by MPlace", template: "%s · MStudy" },
