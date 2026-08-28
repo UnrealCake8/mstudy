@@ -2,14 +2,17 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Building2, MapPin, Search } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/auth/auth-provider";
 import { DEFAULT_SES, roomLocation, SchoolConfig, subscribeSchoolConfig } from "@/lib/school-data";
 
 export function ClassLocatorPage() {
   const { user } = useAuth();
+  const params = useSearchParams();
+  const initialRoom = params.get("room") || "";
   const [config, setConfig] = useState<SchoolConfig | null>(null);
-  const [query, setQuery] = useState("");
-  const [submitted, setSubmitted] = useState("");
+  const [query, setQuery] = useState(initialRoom);
+  const [submitted, setSubmitted] = useState(initialRoom);
 
   useEffect(() => subscribeSchoolConfig("ses", value => setConfig(value || DEFAULT_SES)), []);
   const result = useMemo(() => roomLocation(submitted, config || DEFAULT_SES), [submitted, config]);
