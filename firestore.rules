@@ -13,6 +13,17 @@ service cloud.firestore {
       return signedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
 
+    function roomHost(roomId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/teamRooms/$(roomId))
+        && get(/databases/$(database)/documents/teamRooms/$(roomId)).data.hostUid == request.auth.uid;
+    }
+
+    function inTeamRoom(roomId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/teamRooms/$(roomId)/players/$(request.auth.uid));
+    }
+
     match /admins/{adminId} {
       allow read: if signedIn() && (request.auth.uid == adminId || isAdmin());
       allow create, update, delete: if isAdmin();
@@ -26,6 +37,39 @@ service cloud.firestore {
     match /schoolTimetables/{timetableId} {
       allow read: if signedIn();
       allow create, update, delete: if isAdmin();
+    }
+
+    match /teamRooms/{roomId} {
+      // Public room state contains the lobby and current prompt, never answer keys.
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.hostUid == request.auth.uid;
+      allow update, delete: if roomHost(roomId);
+
+      match /players/{playerId} {
+        allow read: if roomHost(roomId) || inTeamRoom(roomId);
+        allow create: if signedIn()
+          && playerId == request.auth.uid
+          && request.resource.data.uid == request.auth.uid;
+        allow update: if roomHost(roomId)
+          || (signedIn()
+            && playerId == request.auth.uid
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'active']));
+        allow delete: if roomHost(roomId) || (signedIn() && playerId == request.auth.uid);
+      }
+
+      match /answers/{answerId} {
+        allow read: if roomHost(roomId) || inTeamRoom(roomId);
+        allow create: if inTeamRoom(roomId)
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.processed == false
+          && request.resource.data.keys().hasOnly(['uid', 'questionIndex', 'choice', 'processed', 'answeredAt']);
+        allow update, delete: if roomHost(roomId);
+      }
+    }
+
+    // Full questions and answer keys are isolated from players.
+    match /teamRoomSecrets/{roomId} {
+      allow read, create, update, delete: if roomHost(roomId);
     }
 
     match /users/{userId} {
