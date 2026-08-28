@@ -90,8 +90,8 @@ export function TimetablePage() {
 
     {calendarError ? <div className="notice error-notice">{calendarError}</div> : null}
     {calendarEmail ? <section className="calendar-agenda">
-      <div className="section-row"><div><h2 className="section-title">Upcoming from Google Calendar</h2><p className="section-help">Events from calendars visible in your Google account.</p></div></div>
-      {calendarEvents.length === 0 ? <div className="empty-state calendar-empty"><strong>No upcoming events</strong><span>Your connected calendars have no events in the next 14 days.</span></div> : groupedEvents.map(([date, events]) => <div className="calendar-day-group" key={date}>
+      <div className="section-row"><div><h2 className="section-title">Upcoming from Google Calendar</h2><p className="section-help">Read-only events from your primary Google Calendar.</p></div></div>
+      {calendarEvents.length === 0 ? <div className="empty-state calendar-empty"><strong>No upcoming events</strong><span>Your primary calendar has no events in the next 14 days.</span></div> : groupedEvents.map(([date, events]) => <div className="calendar-day-group" key={date}>
         <h3>{date}</h3>
         <div className="calendar-event-list">{events.map(event => <article className="calendar-event-card" key={`${event.calendarId}_${event.id}`}>
           <div className="calendar-event-time">{eventTime(event)}</div>
@@ -112,6 +112,6 @@ export function TimetablePage() {
     </form>}
 
     <h2 className="section-title">Weekly timetable</h2>
-    <div className="week-grid">{days.map(day => <section className="day-column" key={day}><h2>{day}</h2>{items.filter(i => i.day === day).sort((a,b) => a.startTime.localeCompare(b.startTime)).map(i => <article className="class-card" key={i.id}><div><strong>{i.subject}</strong><span>{i.startTime}–{i.endTime}</span><small>{[i.room,i.teacher].filter(Boolean).join(" · ")}</small></div><button className="icon-button danger" onClick={() => user && deleteItem(user.uid, "timetable", i.id)}><Trash2 size={15}/></button></article>)}</section>)}</div>
+    <div className="week-grid">{days.map(day => <section className="day-column" key={day}><h2>{day}</h2>{items.filter(i => i.day===day).sort((a,b)=>a.startTime.localeCompare(b.startTime)).map(i=><article className="class-card" key={i.id}><div><strong>{i.subject}</strong><span>{i.startTime}–{i.endTime}</span><small>{[i.room,i.teacher].filter(Boolean).join(" · ")}</small></div><button className="icon-button danger" onClick={()=>user&&deleteItem(user.uid,"timetable",i.id)}><Trash2 size={15}/></button></article>)}</section>)}</div>
   </section>;
 }
