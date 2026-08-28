@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Save, ShieldCheck, Trash2, Upload } from "lucide-react";
+import { FileUp, Plus, Save, ShieldCheck, Trash2, Upload } from "lucide-react";
 import { useAuth } from "@/components/auth/auth-provider";
 import {
   DEFAULT_SES,
@@ -24,6 +24,132 @@ const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 const emptyEntry = (): SchoolTimetableEntry => ({ id: crypto.randomUUID(), day: "Monday", subject: "", startTime: "08:00", endTime: "08:50", room: "", teacher: "", type: "Lesson", notes: "" });
 
 type WeekView = "all" | "week1" | "week2";
+type PdfTextItem = { str?: string; transform?: number[]; width?: number };
+type PdfJs = { GlobalWorkerOptions: { workerSrc: string }; getDocument: (data: { data: ArrayBuffer }) => { promise: Promise<{ numPages: number; getPage: (page: number) => Promise<{ getTextContent: () => Promise<{ items: PdfTextItem[] }> }> }> } };
+
+declare global {
+  interface Window { pdfjsLib?: PdfJs }
+}
+
+const PDFJS_VERSION = "3.11.174";
+
+async function loadPdfJs() {
+  if (window.pdfjsLib) return window.pdfjsLib;
+  await new Promise<void>((resolve, reject) => {
+    const existing = document.querySelector<HTMLScriptElement>("script[data-mstudy-pdfjs]");
+    if (existing) {
+      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener("error", () => reject(new Error("PDF reader failed to load.")), { once: true });
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERSION}/pdf.min.js`;
+    script.async = true;
+    script.dataset.mstudyPdfjs = "true";
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("PDF reader failed to load."));
+    document.head.appendChild(script);
+  });
+  if (!window.pdfjsLib) throw new Error("PDF reader did not initialise.");
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERSION}/pdf.worker.min.js`;
+  return window.pdfjsLib;
+}
+
+function normaliseTime(value: string) {
+  const clean = value.trim().toLowerCase().replace(".", ":");
+  const match = clean.match(/^(\d{1,2}):(\d{2})\s*(am|pm)?$/);
+  if (!match) return "";
+  let hour = Number(match[1]);
+  const minute = match[2];
+  if (match[3] === "pm" && hour < 12) hour += 12;
+  if (match[3] === "am" && hour === 12) hour = 0;
+  if (hour > 23) return "";
+  return `${String(hour).padStart(2, "0")}:${minute}`;
+}
+
+function parseTimetableLines(lines: string[]) {
+  const result: SchoolTimetableEntry[] = [];
+  let currentDay = "";
+  const dayPattern = /(Monday|Tuesday|Wednesday|Thursday|Friday)/i;
+  const timeRangePattern = /(\d{1,2}[.:]\d{2}\s*(?:am|pm)?)\s*(?:-|–|—|to)\s*(\d{1,2}[.:]\d{2}\s*(?:am|pm)?)/i;
+
+  for (const original of lines) {
+    let line = original.replace(/\s+/g, " ").replace(/\s*\|\s*/g, " | ").trim();
+    if (!line) continue;
+
+    const foundDay = line.match(dayPattern)?.[1];
+    if (foundDay) currentDay = foundDay[0].toUpperCase() + foundDay.slice(1).toLowerCase();
+    const timeMatch = line.match(timeRangePattern);
+    if (!timeMatch || !currentDay) continue;
+
+    const startTime = normaliseTime(timeMatch[1]);
+    const endTime = normaliseTime(timeMatch[2]);
+    if (!startTime || !endTime) continue;
+
+    line = line.replace(dayPattern, " ").replace(timeRangePattern, " ").trim();
+    const pieces = line.split("|").map(part => part.trim()).filter(Boolean);
+    if (!pieces.length) continue;
+
+    const roomIndex = pieces.findIndex(part => /^[A-Za-z]{1,4}\s*\d{1,4}[A-Za-z]?$/.test(part) || /\broom\s*[A-Za-z0-9-]+/i.test(part));
+    const room = roomIndex >= 0 ? pieces[roomIndex].replace(/^room\s*/i, "") : "";
+    const subjectParts = pieces.filter((_, index) => index !== roomIndex);
+    let teacher = "";
+    if (subjectParts.length > 1) teacher = subjectParts.pop() || "";
+    const subject = subjectParts.join(" - ").trim();
+    if (!subject || /^(time|period|lesson)$/i.test(subject)) continue;
+
+    result.push({
+      id: crypto.randomUUID(),
+      day: currentDay,
+      subject,
+      startTime,
+      endTime,
+      room,
+      teacher,
+      type: /break|lunch|registration|assembly/i.test(subject) ? "Activity" : "Lesson",
+      notes: "Imported from PDF",
+    });
+  }
+
+  return result.filter((entry, index, all) => all.findIndex(other => other.day === entry.day && other.startTime === entry.startTime && other.endTime === entry.endTime && other.subject.toLowerCase() === entry.subject.toLowerCase()) === index);
+}
+
+async function extractPdfLines(file: File) {
+  const pdfjs = await loadPdfJs();
+  const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
+  const lines: string[] = [];
+
+  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+    const page = await pdf.getPage(pageNumber);
+    const content = await page.getTextContent();
+    const positioned = content.items
+      .filter(item => item.str?.trim() && Array.isArray(item.transform))
+      .map(item => ({ text: item.str!.trim(), x: item.transform![4] || 0, y: item.transform![5] || 0, width: item.width || 0 }))
+      .sort((a, b) => Math.abs(b.y - a.y) > 3 ? b.y - a.y : a.x - b.x);
+
+    const rows: Array<{ y: number; items: typeof positioned }> = [];
+    for (const item of positioned) {
+      const row = rows.find(candidate => Math.abs(candidate.y - item.y) <= 3);
+      if (row) row.items.push(item);
+      else rows.push({ y: item.y, items: [item] });
+    }
+
+    rows.sort((a, b) => b.y - a.y);
+    for (const row of rows) {
+      const sorted = row.items.sort((a, b) => a.x - b.x);
+      let text = "";
+      let previousEnd = 0;
+      sorted.forEach((item, index) => {
+        const gap = index === 0 ? 0 : item.x - previousEnd;
+        text += `${index === 0 ? "" : gap > 22 ? " | " : " "}${item.text}`;
+        previousEnd = item.x + item.width;
+      });
+      if (text.trim()) lines.push(text.trim());
+    }
+  }
+
+  return lines;
+}
 
 export function AdminPage() {
   const { user } = useAuth();
@@ -39,6 +165,7 @@ export function AdminPage() {
   const [week1Entries, setWeek1Entries] = useState<SchoolTimetableEntry[]>([]);
   const [week2Entries, setWeek2Entries] = useState<SchoolTimetableEntry[]>([]);
   const [status, setStatus] = useState("");
+  const [pdfImporting, setPdfImporting] = useState(false);
 
   async function checkAdminAccess() {
     if (!user) return;
@@ -182,6 +309,32 @@ export function AdminPage() {
     setStatus(nextMode === "separate" ? "Separate Weeks enabled. Edit Week 1 and Week 2 independently, then save or publish." : "Separate Weeks disabled. Students will use the All Weeks timetable.");
   }
 
+  async function importPdf(file?: File) {
+    if (!file || !house) return;
+    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+      setStatus("Please choose a PDF timetable.");
+      return;
+    }
+    if (entries.length > 0 && !window.confirm(`Importing ${file.name} will replace the timetable currently shown in this ${mode === "separate" ? (weekView === "week1" ? "Week 1" : "Week 2") : "All Weeks"} editor. Continue?`)) return;
+
+    setPdfImporting(true);
+    setStatus(`Reading ${file.name}…`);
+    try {
+      const lines = await extractPdfLines(file);
+      const imported = parseTimetableLines(lines);
+      if (!imported.length) {
+        setStatus("MStudy could read the PDF, but could not confidently find timetable rows. The PDF needs selectable text with a weekday and a start–end time for each lesson. Nothing was changed.");
+        return;
+      }
+      setEntries(imported);
+      setStatus(`Imported ${imported.length} timetable items from ${file.name}. Please review the subjects, rooms and teachers below, then Save draft or Publish timetable.`);
+    } catch (error) {
+      setStatus(error instanceof Error ? `PDF import failed: ${error.message}` : "PDF import failed. Nothing was changed.");
+    } finally {
+      setPdfImporting(false);
+    }
+  }
+
   async function saveDraft() {
     if (!year || !schoolClass || !house) return;
     await saveDraftTimetable(selection, mode, allEntries, week1Entries, week2Entries);
@@ -217,9 +370,10 @@ export function AdminPage() {
     </section>
 
     <section className="admin-section">
-      <div className="section-row"><div><h2 className="section-title">Master timetable</h2><p className="section-help">Editing {year?.label || "—"} → {schoolClass?.label || "—"} → {house?.label || "—"}. Save drafts safely, then publish when ready.</p></div><button className="primary-button" onClick={() => setEntries(current => [...current, emptyEntry()])} disabled={!house}><Plus size={17}/> Add item</button></div>
+      <div className="section-row"><div><h2 className="section-title">Master timetable</h2><p className="section-help">Editing {year?.label || "—"} → {schoolClass?.label || "—"} → {house?.label || "—"}. Save drafts safely, then publish when ready.</p></div><div className="form-actions"><label className="secondary-button" aria-disabled={!house || pdfImporting} style={{ opacity: !house || pdfImporting ? .55 : 1, cursor: !house || pdfImporting ? "not-allowed" : "pointer" }}><FileUp size={17}/>{pdfImporting ? "Importing PDF…" : "Import PDF"}<input type="file" accept="application/pdf,.pdf" hidden disabled={!house || pdfImporting} onChange={e => { const file = e.target.files?.[0]; e.currentTarget.value = ""; void importPdf(file); }}/></label><button className="primary-button" onClick={() => setEntries(current => [...current, emptyEntry()])} disabled={!house}><Plus size={17}/> Add item</button></div></div>
 
       {!house ? <div className="school-empty">Choose or create a valid class and house before editing a timetable.</div> : <>
+      <div className="notice" style={{ marginTop: 14 }}><strong>PDF importer:</strong> choose a text-based timetable PDF. MStudy will detect weekday + start/end-time rows and place them into the editor for review. It does not publish automatically. Scanned/image-only PDFs are left unchanged rather than guessed.</div>
       <div className="timetable-mode-row">
         <label className="mode-switch"><input type="checkbox" checked={mode === "separate"} onChange={e => switchMode(e.target.checked ? "separate" : "all")}/><span><strong>Separate Weeks Timetable</strong><small>{mode === "separate" ? "Week 1 and Week 2 are different." : "Disabled: one All Weeks timetable is used every week."}</small></span></label>
       </div>
@@ -237,7 +391,7 @@ export function AdminPage() {
         <input value={entry.teacher} placeholder="Teacher" onChange={e => updateEntry(entry.id, "teacher", e.target.value)}/>
         <button className="icon-button danger" aria-label={`Delete ${entry.subject || "timetable item"}`} onClick={() => setEntries(current => current.filter(item => item.id !== entry.id))}><Trash2 size={15}/></button>
       </article>)}</div>
-      {entries.length === 0 ? <div className="empty-state"><strong>No timetable items yet</strong><span>Add the first lesson, break or activity for {mode === "separate" ? (weekView === "week1" ? "Week 1" : "Week 2") : "All Weeks"}.</span></div> : null}
+      {entries.length === 0 ? <div className="empty-state"><strong>No timetable items yet</strong><span>Add the first lesson, break or activity for {mode === "separate" ? (weekView === "week1" ? "Week 1" : "Week 2") : "All Weeks"}, or import a PDF.</span></div> : null}
       <div className="form-actions"><button className="text-button" onClick={saveDraft}><Save size={15}/> Save draft</button><button className="primary-button" onClick={publish}><Upload size={16}/> Publish timetable</button></div>
       </>}
     </section>
