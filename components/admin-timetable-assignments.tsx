@@ -1,8 +1,8 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Link2, UserRoundCheck } from "lucide-react";
-import { assignStudentTimetable, saveSchoolTimetable, SchoolTimetable, StudentProfile, subscribeSchoolTimetables, subscribeStudents } from "@/lib/student-timetables";
+import { Link2, Search, UserRoundCheck } from "lucide-react";
+import { assignStudentTimetable, findStudentByEmail, saveSchoolTimetable, SchoolTimetable, StudentProfile, subscribeSchoolTimetables } from "@/lib/student-timetables";
 
 function makeId(value: string) {
   return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -10,16 +10,15 @@ function makeId(value: string) {
 
 export function AdminTimetableAssignments() {
   const [timetables, setTimetables] = useState<SchoolTimetable[]>([]);
-  const [students, setStudents] = useState<StudentProfile[]>([]);
   const [studentEmail, setStudentEmail] = useState("");
+  const [student, setStudent] = useState<StudentProfile | null>(null);
   const [timetableId, setTimetableId] = useState("");
   const [status, setStatus] = useState("");
+  const [lookingUp, setLookingUp] = useState(false);
 
   useEffect(() => subscribeSchoolTimetables(setTimetables), []);
-  useEffect(() => subscribeStudents(setStudents), []);
 
   const normalizedEmail = studentEmail.trim().toLowerCase();
-  const student = useMemo(() => students.find(item => item.email?.trim().toLowerCase() === normalizedEmail), [students, normalizedEmail]);
   const timetable = useMemo(() => timetables.find(item => item.id === timetableId), [timetables, timetableId]);
 
   async function addTimetable(event: FormEvent<HTMLFormElement>) {
@@ -37,34 +36,62 @@ export function AdminTimetableAssignments() {
     form.reset();
   }
 
-  async function assign() {
+  async function lookupStudent() {
     if (!normalizedEmail) {
+      setStudent(null);
       setStatus("Enter the student's email address.");
-      return;
+      return null;
     }
-    if (!student) {
-      setStatus(`No registered student was found with ${studentEmail.trim()}.`);
-      return;
+    setLookingUp(true);
+    setStatus("Looking up student...");
+    try {
+      const found = await findStudentByEmail(studentEmail);
+      setStudent(found);
+      if (!found) {
+        setStatus(`No registered student was found with ${studentEmail.trim()}.`);
+        return null;
+      }
+      setTimetableId(found.assignedTimetableId || timetableId);
+      setStatus(`Found ${found.name || found.email}.`);
+      return found;
+    } catch (error) {
+      console.error("Student email lookup failed", error);
+      setStudent(null);
+      setStatus("Student lookup was blocked by Firestore. Publish the latest Firestore rules, then try again.");
+      return null;
+    } finally {
+      setLookingUp(false);
     }
+  }
+
+  async function assign() {
     if (!timetable) {
       setStatus("Choose a timetable first.");
       return;
     }
-    await assignStudentTimetable(student.uid, timetable);
-    setStatus(`${timetable.label} assigned to ${student.name || student.email}.`);
+    const target = student?.email?.trim().toLowerCase() === normalizedEmail ? student : await lookupStudent();
+    if (!target) return;
+    try {
+      await assignStudentTimetable(target.uid, timetable);
+      setStudent({ ...target, assignedTimetableId: timetable.id, assignedTimetableLabel: timetable.label });
+      setStatus(`${timetable.label} assigned to ${target.name || target.email}.`);
+    } catch (error) {
+      console.error("Timetable assignment failed", error);
+      setStatus("Assignment was blocked by Firestore. Publish the latest Firestore rules, then try again.");
+    }
   }
 
   async function clearAssignment() {
-    if (!normalizedEmail) {
-      setStatus("Enter the student's email address.");
-      return;
+    const target = student?.email?.trim().toLowerCase() === normalizedEmail ? student : await lookupStudent();
+    if (!target) return;
+    try {
+      await assignStudentTimetable(target.uid, null);
+      setStudent({ ...target, assignedTimetableId: "", assignedTimetableLabel: "" });
+      setStatus(`Timetable assignment cleared for ${target.name || target.email}.`);
+    } catch (error) {
+      console.error("Timetable assignment clear failed", error);
+      setStatus("Clearing the assignment was blocked by Firestore. Publish the latest Firestore rules, then try again.");
     }
-    if (!student) {
-      setStatus(`No registered student was found with ${studentEmail.trim()}.`);
-      return;
-    }
-    await assignStudentTimetable(student.uid, null);
-    setStatus(`Timetable assignment cleared for ${student.name || student.email}.`);
   }
 
   return <section className="admin-section">
@@ -79,11 +106,12 @@ export function AdminTimetableAssignments() {
     </form>
 
     <div className="admin-select-grid">
-      <label>Student email<input type="email" value={studentEmail} onChange={e => setStudentEmail(e.target.value)} placeholder="student@example.com" autoComplete="off"/></label>
+      <label>Student email<input type="email" value={studentEmail} onChange={e => { setStudentEmail(e.target.value); setStudent(null); }} placeholder="student@example.com" autoComplete="off"/></label>
       <label>Timetable<select value={timetableId} onChange={e => setTimetableId(e.target.value)}><option value="">Choose timetable</option>{timetables.map(item => <option key={item.id} value={item.id}>{item.group ? `${item.group} · ` : ""}{item.label}</option>)}</select></label>
     </div>
 
-    {normalizedEmail ? <div className="notice">{student ? <><strong>{student.name || "Student"}</strong>{student.email ? ` · ${student.email}` : ""}<br/>Current assignment: {student.assignedTimetableLabel || "None"}</> : <>No registered student matches this email yet.</>}</div> : null}
-    <div className="form-actions"><button className="primary-button" disabled={!normalizedEmail || !timetableId} onClick={() => void assign()}><UserRoundCheck size={16}/> Assign timetable</button><button className="text-button danger" disabled={!normalizedEmail} onClick={() => void clearAssignment()}>Clear assignment</button></div>
+    <div className="form-actions"><button className="text-button" disabled={!normalizedEmail || lookingUp} onClick={() => void lookupStudent()}><Search size={16}/> {lookingUp ? "Looking up..." : "Find student"}</button></div>
+    {student ? <div className="notice"><strong>{student.name || "Student"}</strong>{student.email ? ` · ${student.email}` : ""}<br/>Current assignment: {student.assignedTimetableLabel || "None"}</div> : null}
+    <div className="form-actions"><button className="primary-button" disabled={!normalizedEmail || !timetableId || lookingUp} onClick={() => void assign()}><UserRoundCheck size={16}/> Assign timetable</button><button className="text-button danger" disabled={!normalizedEmail || lookingUp} onClick={() => void clearAssignment()}>Clear assignment</button></div>
   </section>;
 }
