@@ -11,14 +11,15 @@ function makeId(value: string) {
 export function AdminTimetableAssignments() {
   const [timetables, setTimetables] = useState<SchoolTimetable[]>([]);
   const [students, setStudents] = useState<StudentProfile[]>([]);
-  const [studentUid, setStudentUid] = useState("");
+  const [studentEmail, setStudentEmail] = useState("");
   const [timetableId, setTimetableId] = useState("");
   const [status, setStatus] = useState("");
 
   useEffect(() => subscribeSchoolTimetables(setTimetables), []);
   useEffect(() => subscribeStudents(setStudents), []);
 
-  const student = useMemo(() => students.find(item => item.uid === studentUid), [students, studentUid]);
+  const normalizedEmail = studentEmail.trim().toLowerCase();
+  const student = useMemo(() => students.find(item => item.email?.trim().toLowerCase() === normalizedEmail), [students, normalizedEmail]);
   const timetable = useMemo(() => timetables.find(item => item.id === timetableId), [timetables, timetableId]);
 
   async function addTimetable(event: FormEvent<HTMLFormElement>) {
@@ -37,19 +38,37 @@ export function AdminTimetableAssignments() {
   }
 
   async function assign() {
-    if (!studentUid || !timetable) return;
-    await assignStudentTimetable(studentUid, timetable);
-    setStatus(`${timetable.label} assigned to ${student?.name || "student"}.`);
+    if (!normalizedEmail) {
+      setStatus("Enter the student's email address.");
+      return;
+    }
+    if (!student) {
+      setStatus(`No registered student was found with ${studentEmail.trim()}.`);
+      return;
+    }
+    if (!timetable) {
+      setStatus("Choose a timetable first.");
+      return;
+    }
+    await assignStudentTimetable(student.uid, timetable);
+    setStatus(`${timetable.label} assigned to ${student.name || student.email}.`);
   }
 
   async function clearAssignment() {
-    if (!studentUid) return;
-    await assignStudentTimetable(studentUid, null);
-    setStatus(`Timetable assignment cleared for ${student?.name || "student"}.`);
+    if (!normalizedEmail) {
+      setStatus("Enter the student's email address.");
+      return;
+    }
+    if (!student) {
+      setStatus(`No registered student was found with ${studentEmail.trim()}.`);
+      return;
+    }
+    await assignStudentTimetable(student.uid, null);
+    setStatus(`Timetable assignment cleared for ${student.name || student.email}.`);
   }
 
   return <section className="admin-section">
-    <div className="section-row"><div><h2 className="section-title">Master Timetables</h2><p className="section-help">Create timetable PDFs, then assign any timetable directly to any registered student. A student does not need a year, class or house.</p></div></div>
+    <div className="section-row"><div><h2 className="section-title">Master Timetables</h2><p className="section-help">Create timetable PDFs, then assign any timetable directly to a registered student by entering their email address.</p></div></div>
     {status ? <div className="notice">{status}</div> : null}
 
     <form className="editor-card compact" onSubmit={addTimetable}>
@@ -60,11 +79,11 @@ export function AdminTimetableAssignments() {
     </form>
 
     <div className="admin-select-grid">
-      <label>Student<select value={studentUid} onChange={e => { const uid = e.target.value; setStudentUid(uid); const profile = students.find(item => item.uid === uid); setTimetableId(profile?.assignedTimetableId || ""); }}><option value="">Choose student</option>{students.map(item => <option key={item.uid} value={item.uid}>{item.name} {item.email ? `(${item.email})` : ""}</option>)}</select></label>
+      <label>Student email<input type="email" value={studentEmail} onChange={e => setStudentEmail(e.target.value)} placeholder="student@example.com" autoComplete="off"/></label>
       <label>Timetable<select value={timetableId} onChange={e => setTimetableId(e.target.value)}><option value="">Choose timetable</option>{timetables.map(item => <option key={item.id} value={item.id}>{item.group ? `${item.group} · ` : ""}{item.label}</option>)}</select></label>
     </div>
 
-    {student ? <div className="notice">Current assignment: {student.assignedTimetableLabel || "None"}</div> : null}
-    <div className="form-actions"><button className="primary-button" disabled={!studentUid || !timetableId} onClick={() => void assign()}><UserRoundCheck size={16}/> Assign timetable</button><button className="text-button danger" disabled={!studentUid} onClick={() => void clearAssignment()}>Clear assignment</button></div>
+    {normalizedEmail ? <div className="notice">{student ? <><strong>{student.name || "Student"}</strong>{student.email ? ` · ${student.email}` : ""}<br/>Current assignment: {student.assignedTimetableLabel || "None"}</> : <>No registered student matches this email yet.</>}</div> : null}
+    <div className="form-actions"><button className="primary-button" disabled={!normalizedEmail || !timetableId} onClick={() => void assign()}><UserRoundCheck size={16}/> Assign timetable</button><button className="text-button danger" disabled={!normalizedEmail} onClick={() => void clearAssignment()}>Clear assignment</button></div>
   </section>;
 }
