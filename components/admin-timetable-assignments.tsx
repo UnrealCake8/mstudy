@@ -26,10 +26,10 @@ export function AdminTimetableAssignments() {
     const form = event.currentTarget;
     const data = new FormData(form);
     const label = String(data.get("label") || "").trim();
-    const year = String(data.get("year") || "").trim();
+    const group = String(data.get("group") || "").trim();
     const pdfUrl = String(data.get("pdfUrl") || "").trim();
-    if (!label || !year || !pdfUrl) return;
-    const item = { id: makeId(`${year}-${label}`), label, year, pdfUrl };
+    if (!label || !pdfUrl) return;
+    const item = { id: makeId(`${label}-${Date.now()}`), label, group, pdfUrl };
     await saveSchoolTimetable(item);
     setTimetableId(item.id);
     setStatus(`${label} saved.`);
@@ -49,22 +49,22 @@ export function AdminTimetableAssignments() {
   }
 
   return <section className="admin-section">
-    <div className="section-row"><div><h2 className="section-title">Master Timetables</h2><p className="section-help">Create year-specific timetable PDFs, then assign the correct timetable to individual students.</p></div></div>
+    <div className="section-row"><div><h2 className="section-title">Master Timetables</h2><p className="section-help">Create timetable PDFs, then assign any timetable directly to any registered student. A student does not need a year, class or house.</p></div></div>
     {status ? <div className="notice">{status}</div> : null}
 
     <form className="editor-card compact" onSubmit={addTimetable}>
       <input name="label" placeholder="Timetable name, e.g. Year 7 Main" required/>
-      <input name="year" placeholder="Year, e.g. Year 7" required/>
+      <input name="group" placeholder="Optional label, e.g. Year 7 or Senior School"/>
       <input name="pdfUrl" type="url" placeholder="PDF URL" required/>
       <button className="primary-button"><Link2 size={17}/> Save timetable</button>
     </form>
 
     <div className="admin-select-grid">
       <label>Student<select value={studentUid} onChange={e => { const uid = e.target.value; setStudentUid(uid); const profile = students.find(item => item.uid === uid); setTimetableId(profile?.assignedTimetableId || ""); }}><option value="">Choose student</option>{students.map(item => <option key={item.uid} value={item.uid}>{item.name} {item.email ? `(${item.email})` : ""}</option>)}</select></label>
-      <label>Timetable<select value={timetableId} onChange={e => setTimetableId(e.target.value)}><option value="">Choose timetable</option>{timetables.map(item => <option key={item.id} value={item.id}>{item.year} · {item.label}</option>)}</select></label>
+      <label>Timetable<select value={timetableId} onChange={e => setTimetableId(e.target.value)}><option value="">Choose timetable</option>{timetables.map(item => <option key={item.id} value={item.id}>{item.group ? `${item.group} · ` : ""}{item.label}</option>)}</select></label>
     </div>
 
-    {student ? <div className="notice">Current assignment: {student.assignedTimetableLabel ? `${student.assignedYear} · ${student.assignedTimetableLabel}` : "None"}</div> : null}
+    {student ? <div className="notice">Current assignment: {student.assignedTimetableLabel || "None"}</div> : null}
     <div className="form-actions"><button className="primary-button" disabled={!studentUid || !timetableId} onClick={() => void assign()}><UserRoundCheck size={16}/> Assign timetable</button><button className="text-button danger" disabled={!studentUid} onClick={() => void clearAssignment()}>Clear assignment</button></div>
   </section>;
 }
