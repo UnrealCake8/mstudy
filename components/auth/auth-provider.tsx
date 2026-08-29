@@ -15,10 +15,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => onAuthStateChanged(auth, async (nextUser) => {
     setUser(nextUser);
     if (nextUser) {
+      const email = nextUser.email ?? "";
       await setDoc(doc(db, "users", nextUser.uid), {
         uid: nextUser.uid,
         name: nextUser.displayName ?? "Student",
-        email: nextUser.email ?? "",
+        email,
+        emailLower: email.trim().toLowerCase(),
         photoURL: nextUser.photoURL ?? null,
         lastSeenAt: serverTimestamp(),
       }, { merge: true });
