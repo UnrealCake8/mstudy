@@ -55,8 +55,8 @@ export default function HomePage() {
   const quickActions = [
     ["/homework", "Add assignment", Plus],
     ["/notes", "New note", NotebookPen],
-    ["/calendar", "Calendar", CalendarDays],
-    ["/play", "Study games", Gamepad2],
+    ["/planner", "Open planner", CalendarDays],
+    ["/study", "Start studying", Gamepad2],
   ] as const;
 
   return <AppShell><section className="page">
@@ -73,16 +73,16 @@ export default function HomePage() {
     </div>
 
     {nextClass && <>
-      <div className="section-row"><h2 className="section-title">Next class</h2><Link href="/timetable">Full timetable</Link></div>
+      <div className="section-row"><h2 className="section-title">Next class</h2><Link href="/classes">Open classes</Link></div>
       <div className="panel"><div className="row"><div><strong>{nextClass.subject}</strong><br/><small>{nextClass.room ? `Room ${nextClass.room}` : "Room not set"}{nextClass.teacher ? ` · ${nextClass.teacher}` : ""}</small></div><span>{nextClass.startTime}–{nextClass.endTime}</span></div></div>
     </>}
 
-    <div className="section-row"><h2 className="section-title">Due soon</h2><Link href="/homework">See all assignments</Link></div>
+    <div className="section-row"><h2 className="section-title">Due soon</h2><Link href="/planner">Open planner</Link></div>
     <div className="panel">
       {pending.length === 0 ? <div className="empty-state"><CheckCircle2 size={22}/><strong>You’re all caught up.</strong><p>No unfinished assignments are waiting for you.</p></div> : pending.map(task => <div className="row" key={task.id}><div><strong>{task.title}</strong><br/><small>{task.subject}</small></div><span>Due {friendlyDueDate(task.dueDate)}</span></div>)}
     </div>
 
-    <div className="section-row"><h2 className="section-title">Today</h2><Link href="/timetable">View timetable</Link></div>
+    <div className="section-row"><h2 className="section-title">Today’s classes</h2><Link href="/classes">View classes</Link></div>
     <div className="panel">
       {todayClasses.length === 0 ? <div className="empty-state"><Clock3 size={22}/><strong>No classes on your timetable today.</strong></div> : todayClasses.map(item => <div className="row" key={item.id}><div><strong>{item.subject}</strong><br/><small>{item.room ? `Room ${item.room}` : "Room not set"}</small></div><span>{item.startTime}–{item.endTime}</span></div>)}
     </div>
