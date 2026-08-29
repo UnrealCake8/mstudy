@@ -18,14 +18,14 @@ export default function AuthPage() {
   return (
     <main className="auth-shell">
       <section className="auth-card">
-        <Link href="/" className="auth-brand">MStudy</Link>
+        <Link href="/" className="auth-brand">MPlace Study</Link>
         <p className="auth-kicker">Your school life, organised.</p>
-        <h1>Welcome to MStudy</h1>
+        <h1>Welcome to MPlace Study</h1>
         <p className="auth-copy">Sign in with email and password, or continue with Google. Classroom connections can be added later and are never required.</p>
         <EmailPasswordAuth />
         <div className="auth-divider" role="separator"><span>or</span></div>
         <GoogleSignInButton />
-        <p className="auth-note">Your MStudy data is private to your account.</p>
+        <p className="auth-note">Your MPlace Study data is private to your account.</p>
       </section>
     </main>
   );
