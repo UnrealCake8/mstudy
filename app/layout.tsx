@@ -8,9 +8,9 @@ import "./school-tools.css";
 import "./ipad.css";
 
 export const metadata: Metadata = {
-  title: { default: "MStudy by MPlace", template: "%s · MStudy" },
-  description: "MStudy by MPlace keeps school life organised with homework, notes, timetables, Classroom, and study tools.",
-  applicationName: "MStudy by MPlace",
+  title: { default: "MPlace Study", template: "%s · MPlace Study" },
+  description: "MPlace Study keeps school life organised with homework, notes, timetables, Classroom, and study tools.",
+  applicationName: "MPlace Study",
 };
 
 export const viewport: Viewport = {
