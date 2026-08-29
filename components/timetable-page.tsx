@@ -7,7 +7,7 @@ import { addItem, deleteItem, subscribeCollection, TimetableClass, updateItem } 
 import { DEFAULT_SES, roomLocation } from "@/lib/school-data";
 
 const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
-const BASE_TIMETABLE_URL = "https://studyfiles.mplace.cc/base-timetable/base.pdf";
+const BASE_TIMETABLE_URL = "/files/base-timetable/base.pdf";
 
 export function TimetablePage() {
   const { user } = useAuth();
