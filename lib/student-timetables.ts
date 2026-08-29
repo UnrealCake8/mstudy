@@ -19,17 +19,17 @@ export type StudentProfile = {
 
 export function subscribeSchoolTimetables(callback: (items: SchoolTimetable[]) => void) {
   return onSnapshot(query(collection(db, "schoolTimetables"), orderBy("label", "asc")), snapshot => {
-    callback(snapshot.docs.map(item => ({ id: item.id, ...item.data() } as SchoolTimetable)));
+    callback(snapshot.docs.map(item => ({ id: item.id, ...(item.data() as Record<string, unknown>) } as SchoolTimetable)));
   });
 }
 
 export function subscribeStudentProfile(uid: string, callback: (profile: StudentProfile | null) => void) {
-  return onSnapshot(doc(db, "users", uid), snapshot => callback(snapshot.exists() ? ({ uid: snapshot.id, ...snapshot.data() } as StudentProfile) : null));
+  return onSnapshot(doc(db, "users", uid), snapshot => callback(snapshot.exists() ? ({ uid: snapshot.id, ...(snapshot.data() as Record<string, unknown>) } as StudentProfile) : null));
 }
 
 function profileFromSnapshot(snapshot: Awaited<ReturnType<typeof getDocs>>) {
   const first = snapshot.docs[0];
-  return first ? ({ uid: first.id, ...first.data() } as StudentProfile) : null;
+  return first ? ({ uid: first.id, ...(first.data() as Record<string, unknown>) } as StudentProfile) : null;
 }
 
 export async function findStudentByEmail(email: string) {
