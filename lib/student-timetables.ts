@@ -4,8 +4,8 @@ import { db } from "@/lib/firebase";
 export type SchoolTimetable = {
   id: string;
   label: string;
-  year: string;
   pdfUrl: string;
+  group?: string;
 };
 
 export type StudentProfile = {
@@ -14,7 +14,6 @@ export type StudentProfile = {
   email: string;
   assignedTimetableId?: string;
   assignedTimetableLabel?: string;
-  assignedYear?: string;
 };
 
 export function subscribeSchoolTimetables(callback: (items: SchoolTimetable[]) => void) {
@@ -36,8 +35,8 @@ export function subscribeStudentProfile(uid: string, callback: (profile: Student
 export async function saveSchoolTimetable(input: SchoolTimetable) {
   await setDoc(doc(db, "schoolTimetables", input.id), {
     label: input.label,
-    year: input.year,
     pdfUrl: input.pdfUrl,
+    group: input.group || "",
     updatedAt: serverTimestamp(),
   }, { merge: true });
 }
@@ -46,12 +45,10 @@ export async function assignStudentTimetable(studentUid: string, timetable: Scho
   await updateDoc(doc(db, "users", studentUid), timetable ? {
     assignedTimetableId: timetable.id,
     assignedTimetableLabel: timetable.label,
-    assignedYear: timetable.year,
     timetableAssignedAt: serverTimestamp(),
   } : {
     assignedTimetableId: "",
     assignedTimetableLabel: "",
-    assignedYear: "",
     timetableAssignedAt: serverTimestamp(),
   });
 }
