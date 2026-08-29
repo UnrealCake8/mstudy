@@ -12,20 +12,87 @@ import { useAuth } from "@/components/auth/auth-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 const MPLACE_LOGO = "https://unrealcake8.github.io/cdn-hls/mplace.png";
-const baseNav = [
-  ["/", "Home", Home], ["/homework", "Homework", CheckSquare], ["/play", "Play", Gamepad2], ["/team", "Team Mode", Users], ["/timetable", "Timetable", Clock3],
-  ["/calendar", "Master Calendar", CalendarDays], ["/class-locator", "Class Locator", MapPinned], ["/notes", "Notes", NotebookPen], ["/events", "My Events", CalendarDays], ["/classroom", "Classroom", GraduationCap], ["/settings", "Settings", Settings],
+
+const mainNav = [
+  ["/", "Home", Home],
+  ["/homework", "Assignments", CheckSquare],
+  ["/timetable", "Timetable", Clock3],
+  ["/calendar", "Calendar", CalendarDays],
+  ["/notes", "Notes", NotebookPen],
+  ["/play", "Study Games", Gamepad2],
 ] as const;
 
+const moreNav = [
+  ["/classroom", "Google Classroom", GraduationCap],
+  ["/class-locator", "Find a classroom", MapPinned],
+  ["/team", "Team Mode", Users],
+  ["/events", "My Events", CalendarDays],
+  ["/settings", "Settings", Settings],
+] as const;
+
+const mobileNav = mainNav.slice(0, 5);
+
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth(); const router = useRouter(); const pathname = usePathname(); const [admin, setAdmin] = useState(false); const [chatAllowed, setChatAllowed] = useState(false); const [tabletMenuOpen, setTabletMenuOpen] = useState(false);
+  const { user, loading } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
+  const [admin, setAdmin] = useState(false);
+  const [chatAllowed, setChatAllowed] = useState(false);
+  const [tabletMenuOpen, setTabletMenuOpen] = useState(false);
+
   useEffect(() => { if (!loading && !user) router.replace("/auth"); }, [loading, user, router]);
-  useEffect(() => { if (user) { void isAdmin(user.uid).then(setAdmin).catch(() => setAdmin(false)); void isChatDomainAllowed(user.email).then(async ok => { setChatAllowed(ok); if (ok && user.email) await ensureChatProfile(user.uid, user.email, user.displayName); }).catch(() => setChatAllowed(false)); } else { setAdmin(false); setChatAllowed(false); } }, [user]);
+  useEffect(() => {
+    if (user) {
+      void isAdmin(user.uid).then(setAdmin).catch(() => setAdmin(false));
+      void isChatDomainAllowed(user.email).then(async ok => {
+        setChatAllowed(ok);
+        if (ok && user.email) await ensureChatProfile(user.uid, user.email, user.displayName);
+      }).catch(() => setChatAllowed(false));
+    } else {
+      setAdmin(false);
+      setChatAllowed(false);
+    }
+  }, [user]);
   useEffect(() => { setTabletMenuOpen(false); }, [pathname]);
-  const nav = useMemo(() => { const items: Array<readonly [string, string, typeof Home]> = [...baseNav]; if (chatAllowed) items.push(["/messages", "Messages", MessageCircle]); if (admin) { items.push(["/admin", "Admin", ShieldCheck]); items.push(["/admin/timetables", "Timetable Assignments", Clock3]); items.push(["/admin/messages", "Chat Admin", MessageCircle]); } return items; }, [admin, chatAllowed]);
+
+  const secondaryNav = useMemo(() => {
+    const items: Array<readonly [string, string, typeof Home]> = [...moreNav];
+    if (chatAllowed) items.unshift(["/messages", "Messages", MessageCircle]);
+    if (admin) {
+      items.push(["/admin", "Admin", ShieldCheck]);
+      items.push(["/admin/timetables", "Timetable Assignments", Clock3]);
+      items.push(["/admin/messages", "Chat Admin", MessageCircle]);
+    }
+    return items;
+  }, [admin, chatAllowed]);
+
   if (loading || !user) return <main className="center-screen"><div className="spinner"/><p>Loading MPlace Study…</p></main>;
-  return <div className="app-frame"><aside className="sidebar"><div className="sidebar-brand-row"><Link href="/" className="mplace-product-brand" aria-label="MPlace Study home"><img src={MPLACE_LOGO} alt="MPlace" className="mplace-parent-logo"/><span><strong>MPlace Study</strong></span></Link><ThemeToggle compact/></div><nav className="side-nav">{nav.map(([href,label,Icon]) => <Link key={href} href={href} className={pathname === href ? "nav-link active" : "nav-link"}><Icon size={19}/><span>{label}</span></Link>)}</nav><a href="https://search.mplace.cc" className="mplace-family-link">Explore MPlace</a><div className="user-block"><div className="avatar">{(user.displayName?.[0] ?? "S").toUpperCase()}</div><div className="user-meta"><strong>{user.displayName ?? "Student"}</strong><small>{user.email}</small></div><button aria-label="Sign out" className="icon-button" onClick={() => signOut(auth)}><LogOut size={18}/></button></div></aside>
-  <header className="tablet-topbar"><Link href="/" className="tablet-brand" aria-label="MPlace Study home"><img src={MPLACE_LOGO} alt="MPlace"/><span><strong>MPlace Study</strong></span></Link><div className="tablet-topbar-actions"><ThemeToggle compact/><button className="tablet-menu-button" aria-label="Open navigation" aria-expanded={tabletMenuOpen} onClick={() => setTabletMenuOpen(true)}><Menu size={22}/></button></div></header>
-  <button className={tabletMenuOpen ? "tablet-nav-backdrop open" : "tablet-nav-backdrop"} aria-label="Close navigation" onClick={() => setTabletMenuOpen(false)}/><aside className={tabletMenuOpen ? "tablet-nav-drawer open" : "tablet-nav-drawer"} aria-hidden={!tabletMenuOpen}><div className="tablet-nav-head"><strong>Navigate MPlace Study</strong><button className="tablet-menu-button" aria-label="Close navigation" onClick={() => setTabletMenuOpen(false)}><X size={21}/></button></div><nav className="tablet-nav-grid">{nav.map(([href,label,Icon]) => <Link key={href} href={href} className={pathname === href ? "tablet-nav-link active" : "tablet-nav-link"}><Icon size={20}/><span>{label}</span></Link>)}</nav><div className="tablet-nav-footer"><a href="https://search.mplace.cc" className="secondary-button">Explore MPlace</a><div className="tablet-user"><div className="avatar">{(user.displayName?.[0] ?? "S").toUpperCase()}</div><div className="tablet-user-copy"><strong>{user.displayName ?? "Student"}</strong><small>{user.email}</small></div><button aria-label="Sign out" className="icon-button" onClick={() => signOut(auth)}><LogOut size={18}/></button></div></div></aside>
-  <main className="main-content">{children}</main><nav className="bottom-nav">{baseNav.slice(0,5).map(([href,label,Icon]) => <Link key={href} href={href} className={pathname === href ? "bottom-link active" : "bottom-link"}><Icon size={20}/><span>{label}</span></Link>)}</nav></div>;
+
+  const renderLink = ([href, label, Icon]: readonly [string, string, typeof Home], className: string) => (
+    <Link key={href} href={href} className={pathname === href ? `${className} active` : className}>
+      <Icon size={19}/><span>{label}</span>
+    </Link>
+  );
+
+  return <div className="app-frame">
+    <aside className="sidebar">
+      <div className="sidebar-brand-row"><Link href="/" className="mplace-product-brand" aria-label="MPlace Study home"><img src={MPLACE_LOGO} alt="MPlace" className="mplace-parent-logo"/><span><strong>MPlace Study</strong></span></Link><ThemeToggle compact/></div>
+      <nav className="side-nav">{mainNav.map(item => renderLink(item, "nav-link"))}</nav>
+      <nav className="side-nav" aria-label="More tools">{secondaryNav.map(item => renderLink(item, "nav-link"))}</nav>
+      <a href="https://search.mplace.cc" className="mplace-family-link">Explore MPlace</a>
+      <div className="user-block"><div className="avatar">{(user.displayName?.[0] ?? "S").toUpperCase()}</div><div className="user-meta"><strong>{user.displayName ?? "Student"}</strong><small>{user.email}</small></div><button aria-label="Sign out" className="icon-button" onClick={() => signOut(auth)}><LogOut size={18}/></button></div>
+    </aside>
+
+    <header className="tablet-topbar"><Link href="/" className="tablet-brand" aria-label="MPlace Study home"><img src={MPLACE_LOGO} alt="MPlace"/><span><strong>MPlace Study</strong></span></Link><div className="tablet-topbar-actions"><ThemeToggle compact/><button className="tablet-menu-button" aria-label="Open navigation" aria-expanded={tabletMenuOpen} onClick={() => setTabletMenuOpen(true)}><Menu size={22}/></button></div></header>
+
+    <button className={tabletMenuOpen ? "tablet-nav-backdrop open" : "tablet-nav-backdrop"} aria-label="Close navigation" onClick={() => setTabletMenuOpen(false)}/>
+    <aside className={tabletMenuOpen ? "tablet-nav-drawer open" : "tablet-nav-drawer"} aria-hidden={!tabletMenuOpen}>
+      <div className="tablet-nav-head"><strong>Navigate MPlace Study</strong><button className="tablet-menu-button" aria-label="Close navigation" onClick={() => setTabletMenuOpen(false)}><X size={21}/></button></div>
+      <nav className="tablet-nav-grid">{mainNav.map(item => renderLink(item, "tablet-nav-link"))}{secondaryNav.map(item => renderLink(item, "tablet-nav-link"))}</nav>
+      <div className="tablet-nav-footer"><a href="https://search.mplace.cc" className="secondary-button">Explore MPlace</a><div className="tablet-user"><div className="avatar">{(user.displayName?.[0] ?? "S").toUpperCase()}</div><div className="tablet-user-copy"><strong>{user.displayName ?? "Student"}</strong><small>{user.email}</small></div><button aria-label="Sign out" className="icon-button" onClick={() => signOut(auth)}><LogOut size={18}/></button></div></div>
+    </aside>
+
+    <main className="main-content">{children}</main>
+    <nav className="bottom-nav">{mobileNav.map(([href,label,Icon]) => <Link key={href} href={href} className={pathname === href ? "bottom-link active" : "bottom-link"}><Icon size={20}/><span>{label}</span></Link>)}</nav>
+  </div>;
 }
