@@ -58,7 +58,7 @@ export function EmailPasswordAuth() {
       </form>
       {error ? <p className="form-error">{error}</p> : null}
       <button className="text-button full" type="button" onClick={() => { setMode(mode === "signin" ? "signup" : "signin"); setError(null); }}>
-        {mode === "signin" ? "New to MStudy? Create an account" : "Already have an account? Sign in"}
+        {mode === "signin" ? "New to MPlace Study? Create an account" : "Already have an account? Sign in"}
       </button>
     </div>
   );
