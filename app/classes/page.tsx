@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Clock3, GraduationCap, MapPinned } from "lucide-react";
+import { Clock3, MapPinned } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Homework, subscribeCollection, TimetableClass } from "@/lib/data";
@@ -24,7 +24,6 @@ export default function ClassesPage() {
   const tools = [
     ["/timetable", "Timetable", "See your week and what lesson comes next.", Clock3],
     ["/class-locator", "Find a classroom", "Open the room locator when you need directions.", MapPinned],
-    ["/classroom", "Google Classroom", "Open classwork connected to your subjects.", GraduationCap],
   ] as const;
 
   return <AppShell><section className="page">
