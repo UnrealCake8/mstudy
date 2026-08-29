@@ -57,15 +57,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [admin, chatAllowed]);
 
   if (loading || !user) {
-    return <main className="center-screen"><div className="spinner"/><p>Loading MStudy…</p></main>;
+    return <main className="center-screen"><div className="spinner"/><p>Loading MPlace Study…</p></main>;
   }
 
   return <div className="app-frame">
     <aside className="sidebar">
       <div className="sidebar-brand-row">
-        <Link href="/" className="mplace-product-brand" aria-label="MStudy by MPlace home">
+        <Link href="/" className="mplace-product-brand" aria-label="MPlace Study home">
           <img src={MPLACE_LOGO} alt="MPlace" className="mplace-parent-logo"/>
-          <span><strong>MStudy</strong><small>by MPlace</small></span>
+          <span><strong>MPlace Study</strong></span>
         </Link>
         <ThemeToggle compact/>
       </div>
@@ -81,9 +81,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     </aside>
 
     <header className="tablet-topbar">
-      <Link href="/" className="tablet-brand" aria-label="MStudy home">
+      <Link href="/" className="tablet-brand" aria-label="MPlace Study home">
         <img src={MPLACE_LOGO} alt="MPlace"/>
-        <span><strong>MStudy</strong><small>by MPlace</small></span>
+        <span><strong>MPlace Study</strong></span>
       </Link>
       <div className="tablet-topbar-actions">
         <ThemeToggle compact/>
@@ -94,7 +94,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <button className={tabletMenuOpen ? "tablet-nav-backdrop open" : "tablet-nav-backdrop"} aria-label="Close navigation" onClick={() => setTabletMenuOpen(false)}/>
     <aside className={tabletMenuOpen ? "tablet-nav-drawer open" : "tablet-nav-drawer"} aria-hidden={!tabletMenuOpen}>
       <div className="tablet-nav-head">
-        <strong>Navigate MStudy</strong>
+        <strong>Navigate MPlace Study</strong>
         <button className="tablet-menu-button" aria-label="Close navigation" onClick={() => setTabletMenuOpen(false)}><X size={21}/></button>
       </div>
       <nav className="tablet-nav-grid">
