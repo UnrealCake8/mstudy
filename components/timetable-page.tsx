@@ -24,7 +24,7 @@ export function TimetablePage() {
 
   const assignedTimetable = useMemo(() => schoolTimetables.find(item => item.id === profile?.assignedTimetableId), [schoolTimetables, profile?.assignedTimetableId]);
   const schoolTimetableUrl = assignedTimetable?.pdfUrl || BASE_TIMETABLE_URL;
-  const schoolTimetableLabel = assignedTimetable ? `${assignedTimetable.year} · ${assignedTimetable.label}` : "Shared school timetable";
+  const schoolTimetableLabel = assignedTimetable?.label || "Shared school timetable";
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
