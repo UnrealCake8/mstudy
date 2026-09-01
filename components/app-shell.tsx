@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { signOut } from "firebase/auth";
-import { CalendarDays, Clock3, Gamepad2, Home, LogOut, Menu, MessageCircle, ShieldCheck, X } from "lucide-react";
+import { CalendarDays, Clock3, EyeOff, Gamepad2, Home, LogOut, Menu, MessageCircle, ShieldCheck, X } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { isAdmin } from "@/lib/school-data";
 import { ensureChatProfile, isChatDomainAllowed } from "@/lib/chat";
@@ -54,6 +54,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     if (chatAllowed) items.push(["/messages", "Messages", MessageCircle]);
     if (admin) {
       items.push(["/admin", "Admin", ShieldCheck]);
+      items.push(["/admin/assignments", "Assignment Visibility", EyeOff]);
       items.push(["/admin/timetables", "Timetable Assignments", Clock3]);
       items.push(["/admin/messages", "Chat Admin", MessageCircle]);
     }

@@ -10,6 +10,7 @@ import { useAuth } from "@/components/auth/auth-provider";
 import { subscribeCollection } from "@/lib/data";
 import { db } from "@/lib/firebase";
 import { ClassroomAssignment, ClassroomCourse, ClassroomResource, ClassroomSyncSummary, disconnectClassroom, syncClassroom } from "@/lib/classroom";
+import { assignmentVisibilityId, subscribeHiddenAssignments } from "@/lib/assignment-visibility";
 
 const CLASSROOM_FILE_HELP = "https://support.study.mplace.cc/help/classroom-files";
 
@@ -20,9 +21,10 @@ function AttachmentHelp({ count, readable, noun }: { count: number; readable: nu
 }
 
 export function ClassroomPage() {
-  const { user } = useAuth(); const [courses,setCourses]=useState<ClassroomCourse[]>([]); const [assignments,setAssignments]=useState<ClassroomAssignment[]>([]); const [resources,setResources]=useState<ClassroomResource[]>([]); const [connected,setConnected]=useState(false); const [summary,setSummary]=useState<ClassroomSyncSummary|null>(null); const [busy,setBusy]=useState(false); const [error,setError]=useState<string|null>(null);
+  const { user } = useAuth(); const [courses,setCourses]=useState<ClassroomCourse[]>([]); const [assignments,setAssignments]=useState<ClassroomAssignment[]>([]); const [hiddenAssignments,setHiddenAssignments]=useState<Set<string>>(new Set()); const [resources,setResources]=useState<ClassroomResource[]>([]); const [connected,setConnected]=useState(false); const [summary,setSummary]=useState<ClassroomSyncSummary|null>(null); const [busy,setBusy]=useState(false); const [error,setError]=useState<string|null>(null);
   useEffect(()=>{if(!user)return;const a=subscribeCollection<ClassroomCourse>(user.uid,"classroomCourses",setCourses,{orderByCreatedAt:false});const b=subscribeCollection<ClassroomAssignment>(user.uid,"classroomAssignments",setAssignments,{orderByCreatedAt:false});const c=subscribeCollection<ClassroomResource>(user.uid,"classroomResources",setResources,{orderByCreatedAt:false});const d=onSnapshot(doc(db,"users",user.uid),s=>{const data=s.data();setConnected(Boolean(data?.classroomConnected));setSummary((data?.classroomSyncSummary as ClassroomSyncSummary|undefined)||null)});return()=>{a();b();c();d()}},[user]);
-  const courseNames=useMemo(()=>new Map(courses.map(c=>[c.id,c.name])),[courses]); const sorted=useMemo(()=>[...assignments].sort((a,b)=>!a.dueDate?1:!b.dueDate?-1:a.dueDate.localeCompare(b.dueDate)),[assignments]);
+  useEffect(()=>subscribeHiddenAssignments(setHiddenAssignments),[]);
+  const courseNames=useMemo(()=>new Map(courses.map(c=>[c.id,c.name])),[courses]); const sorted=useMemo(()=>assignments.filter(item=>!hiddenAssignments.has(assignmentVisibilityId(item.courseId,item.id))).sort((a,b)=>!a.dueDate?1:!b.dueDate?-1:a.dueDate.localeCompare(b.dueDate)),[assignments,hiddenAssignments]);
   async function connect(){if(!user)return;setBusy(true);setError(null);try{const result=await syncClassroom(user);setSummary(result.summary)}catch(err){setError(err instanceof Error?err.message:"Could not connect Google Classroom.")}finally{setBusy(false)}}
   async function disconnect(){if(!user)return;setBusy(true);setError(null);try{await disconnectClassroom(user);setSummary(null)}catch(err){setError(err instanceof Error?err.message:"Could not disconnect Google Classroom.")}finally{setBusy(false)}}
   return <AppShell><section className="page"><div className="page-head"><div><p className="eyebrow">Connected school tools</p><h1>Google Classroom</h1><p>Assignments and class resources can feed directly into Study Games.</p></div><div className="form-actions">{connected?<DrivePickerButton/>:null}<button className="primary-button" onClick={connect} disabled={busy}><RefreshCw size={17}/>{busy?"Syncing…":connected?"Sync Classroom":"Connect Classroom"}</button></div></div>
