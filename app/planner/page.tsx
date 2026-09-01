@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, CheckSquare, GraduationCap, ListTodo } from "lucide-react";
+import { CalendarDays, CheckSquare, Clock3, GraduationCap, ListTodo } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { useAuth } from "@/components/auth/auth-provider";
 import { EventItem, Homework, subscribeCollection } from "@/lib/data";
@@ -29,6 +29,7 @@ export default function PlannerPage() {
     ["/calendar", "Calendar", "See school dates and your schedule in one place.", CalendarDays],
     ["/events", "Exams & events", "Keep tests, exams and important dates together.", ListTodo],
     ["/classroom", "Google Classroom", "Import and review work from Classroom.", GraduationCap],
+    ["/after-school", "After-school planner", "Plan homework, CCAs, dinner, revision and free time.", Clock3],
   ] as const;
 
   return <AppShell><section className="page">

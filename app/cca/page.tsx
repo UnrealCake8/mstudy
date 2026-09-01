@@ -1,0 +1,1 @@
+import type{Metadata}from"next";import{AppShell}from"@/components/app-shell";import{CcaPage}from"@/components/cca-page";export const metadata:Metadata={title:"CCA Hub"};export default function Page(){return <AppShell><CcaPage/></AppShell>;}

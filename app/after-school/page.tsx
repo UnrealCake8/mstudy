@@ -1,0 +1,1 @@
+import type{Metadata}from"next";import{AppShell}from"@/components/app-shell";import{AfterSchoolPlannerPage}from"@/components/after-school-planner-page";export const metadata:Metadata={title:"After-school Planner"};export default function Page(){return <AppShell><AfterSchoolPlannerPage/></AppShell>;}

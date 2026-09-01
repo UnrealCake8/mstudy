@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { signOut } from "firebase/auth";
-import { CalendarDays, Clock3, EyeOff, Gamepad2, Home, LogOut, Menu, MessageCircle, ShieldCheck, X } from "lucide-react";
+import { BookOpen, CalendarDays, Clock3, EyeOff, Gamepad2, HeartHandshake, Home, LogOut, Megaphone, Menu, MessageCircle, ShieldCheck, Sparkles, X } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { isAdmin } from "@/lib/school-data";
 import { ensureChatProfile, isChatDomainAllowed } from "@/lib/chat";
@@ -21,7 +21,7 @@ const mainNav = [
 ] as const;
 
 const sectionRoutes: Record<string, string[]> = {
-  "/planner": ["/planner", "/homework", "/calendar", "/events", "/classroom"],
+  "/planner": ["/planner", "/homework", "/calendar", "/events", "/classroom", "/after-school"],
   "/classes": ["/classes", "/timetable", "/class-locator"],
   "/study": ["/study", "/notes", "/play", "/team"],
 };
@@ -50,7 +50,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => { setTabletMenuOpen(false); }, [pathname]);
 
   const utilityNav = useMemo(() => {
-    const items: Array<readonly [string, string, typeof Home]> = [];
+    const items: Array<readonly [string, string, typeof Home]> = [
+      ["/notices", "School Notices", Megaphone], ["/cca", "CCA Hub", Sparkles], ["/support", "Support", HeartHandshake], ["/school-guide", "School Guide", BookOpen]
+    ];
     if (chatAllowed) items.push(["/messages", "Messages", MessageCircle]);
     if (admin) {
       items.push(["/admin", "Admin", ShieldCheck]);

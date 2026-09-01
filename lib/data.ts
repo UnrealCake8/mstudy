@@ -1,10 +1,12 @@
 import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, serverTimestamp, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
-export type Homework = { id: string; title: string; subject: string; dueDate: string; completed: boolean; priority: "low"|"medium"|"high"; createdAt?: unknown };
+export type Homework = { id: string; title: string; subject: string; teacher?:string; duration?:string; dueDate: string; completed: boolean; priority: "low"|"medium"|"high"; createdAt?: unknown };
 export type Note = { id: string; title: string; subject: string; content: string; updatedAt?: unknown };
 export type EventItem = { id: string; title: string; date: string; details: string; createdAt?: unknown };
 export type TimetableClass = { id: string; subject: string; day: string; startTime: string; endTime: string; room: string; teacher: string; createdAt?: unknown };
+export type AfterSchoolBlock={id:string;day:string;startTime:string;endTime:string;type:"Homework"|"CCA"|"Dinner"|"Revision"|"Free time";title:string;createdAt?:unknown};
+export type CcaActivity={id:string;name:string;day:string;startTime:string;endTime:string;location?:string;createdAt?:unknown};
 
 function userCollection(uid: string, name: string) { return collection(db, "users", uid, name); }
 

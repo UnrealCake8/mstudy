@@ -6,6 +6,7 @@ import "./theme.css";
 import "./mplace-brand.css";
 import "./school-tools.css";
 import "./ipad.css";
+import "./student-life.css";
 
 export const metadata: Metadata = {
   title: { default: "MPlace Study", template: "%s · MPlace Study" },
