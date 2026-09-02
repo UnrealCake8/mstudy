@@ -1,0 +1,40 @@
+.notice-group-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.notice-group-tabs > button,
+.notice-custom-group > button:first-child {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+.notice-group-tabs button.active {
+  background: var(--green);
+  border-color: var(--green);
+  color: #fff;
+}
+.notice-custom-group {
+  display: inline-flex;
+  position: relative;
+}
+.notice-custom-group > button:first-child {
+  padding-right: 29px;
+}
+.notice-group-delete {
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: currentColor;
+  padding: 5px;
+  cursor: pointer;
+}

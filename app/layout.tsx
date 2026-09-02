@@ -7,10 +7,12 @@ import "./mplace-brand.css";
 import "./school-tools.css";
 import "./ipad.css";
 import "./student-life.css";
+import "./practice-tools.css";
 
 export const metadata: Metadata = {
   title: { default: "MPlace Study", template: "%s · MPlace Study" },
-  description: "MPlace Study keeps school life organised with homework, notes, timetables, Classroom, and study tools.",
+  description:
+    "MPlace Study keeps school life organised with homework, notes, timetables, Classroom, and study tools.",
   applicationName: "MPlace Study",
 };
 
@@ -36,12 +38,18 @@ const themeScript = `
   } catch (_) {}
 })();`;
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
-        <script src="https://ads.mplace.cc/sdk.js" data-site="site_5f427f89c2f9" async />
+        <script
+          src="https://ads.mplace.cc/sdk.js"
+          data-site="site_5f427f89c2f9"
+          async
+        />
       </head>
       <body>
         <AuthProvider>{children}</AuthProvider>
