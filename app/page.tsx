@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Clock3 } from "lucide-react";
+import { BookOpenCheck, CheckCircle2, Clock3, TimerReset } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Homework, subscribeCollection, TimetableClass } from "@/lib/data";
@@ -67,51 +67,63 @@ export default function HomePage() {
 
   return (
     <AppShell>
-      <section className="page calm-dashboard">
-        <header className="calm-home-head">
+      <section className="page lively-dashboard">
+        <header className="lively-home-head">
           <div>
-            <p className="calm-date">{now.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}</p>
-            <h1>Hi, {firstName}</h1>
+            <p className="lively-date">{now.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}</p>
+            <h1>Hey, {firstName} 👋</h1>
             <p>{current ? `${current.subject} is on now${current.room ? ` in Room ${current.room}` : ""}.` : next ? `${next.subject} is next at ${next.startTime}${next.room ? ` in Room ${next.room}` : ""}.` : "You’re clear for the rest of the day."}</p>
           </div>
         </header>
 
-        <div className="calm-summary-strip">
-          <div>
-            <span>Now</span>
-            <strong>{current?.subject || "No lesson"}</strong>
-            <small>{current ? `${current.startTime}–${current.endTime}` : "Nothing scheduled"}</small>
-          </div>
-          <div>
-            <span>Next</span>
-            <strong>{next?.subject || "No more classes"}</strong>
-            <small>{next ? `${next.startTime}${next.room ? ` · Room ${next.room}` : ""}` : "Your day is clear"}</small>
-          </div>
-          <div>
-            <span>Due soon</span>
-            <strong>{pending.length}</strong>
-            <small>{pending.length === 1 ? "item" : "items"}</small>
-          </div>
+        <div className="lively-summary-strip">
+          <article className="summary-card summary-now">
+            <div className="summary-icon"><Clock3 size={18} /></div>
+            <div>
+              <span>Now</span>
+              <strong>{current?.subject || "No lesson"}</strong>
+              <small>{current ? `${current.startTime}–${current.endTime}` : "Nothing scheduled"}</small>
+            </div>
+          </article>
+          <article className="summary-card summary-next">
+            <div className="summary-icon"><TimerReset size={18} /></div>
+            <div>
+              <span>Next</span>
+              <strong>{next?.subject || "No more classes"}</strong>
+              <small>{next ? `${next.startTime}${next.room ? ` · Room ${next.room}` : ""}` : "Your day is clear"}</small>
+            </div>
+          </article>
+          <article className="summary-card summary-due">
+            <div className="summary-icon"><BookOpenCheck size={18} /></div>
+            <div>
+              <span>Due soon</span>
+              <strong>{pending.length}</strong>
+              <small>{pending.length === 1 ? "item" : "items"}</small>
+            </div>
+          </article>
         </div>
 
-        <div className="calm-main-grid">
-          <section>
-            <div className="section-row calm-section-row">
-              <h2 className="section-title">Due soon</h2>
-              <Link href="/planner">View planner</Link>
+        <div className="lively-main-grid">
+          <section className="lively-section lively-section-planner">
+            <div className="section-row lively-section-row">
+              <div>
+                <span className="section-kicker">Planner</span>
+                <h2 className="section-title">Due soon</h2>
+              </div>
+              <Link href="/planner">View all</Link>
             </div>
-            <div className="panel calm-panel">
+            <div className="panel lively-panel">
               {pending.length ? pending.map((task) => (
-                <div className="row calm-row" key={task.id}>
+                <div className="row lively-row" key={task.id}>
                   <div>
                     <strong>{task.title}</strong>
                     <small>{task.subject}</small>
                   </div>
-                  <span>{due(task.date)}</span>
+                  <span className="due-chip">{due(task.date)}</span>
                 </div>
               )) : (
-                <div className="empty-state compact calm-empty">
-                  <CheckCircle2 size={20} />
+                <div className="empty-state compact lively-empty">
+                  <CheckCircle2 size={21} />
                   <strong>Nothing due soon</strong>
                   <span>You’re caught up.</span>
                 </div>
@@ -119,23 +131,26 @@ export default function HomePage() {
             </div>
           </section>
 
-          <section>
-            <div className="section-row calm-section-row">
-              <h2 className="section-title">Today</h2>
-              <Link href="/timetable">Full timetable</Link>
+          <section className="lively-section lively-section-classes">
+            <div className="section-row lively-section-row">
+              <div>
+                <span className="section-kicker">Classes</span>
+                <h2 className="section-title">Today</h2>
+              </div>
+              <Link href="/timetable">Timetable</Link>
             </div>
-            <div className="panel calm-panel">
+            <div className="panel lively-panel timetable-panel">
               {todayClasses.length ? todayClasses.map((item) => (
-                <div className="row calm-row" key={item.id}>
+                <div className="row lively-row timetable-row" key={item.id}>
+                  <span className="time-block">{item.startTime}</span>
                   <div>
                     <strong>{item.subject}</strong>
                     <small>{item.room ? `Room ${item.room}` : "Room not set"}{item.teacher ? ` · ${item.teacher}` : ""}</small>
                   </div>
-                  <span>{item.startTime}–{item.endTime}</span>
                 </div>
               )) : (
-                <div className="empty-state compact calm-empty">
-                  <Clock3 size={20} />
+                <div className="empty-state compact lively-empty">
+                  <Clock3 size={21} />
                   <strong>No classes today</strong>
                   <span>Add your timetable to see your day here.</span>
                 </div>
