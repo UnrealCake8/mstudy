@@ -9,6 +9,7 @@ import "./school-tools.css";
 import "./ipad.css";
 import "./student-life.css";
 import "./practice-tools.css";
+import "./redesign.css";
 
 export const metadata: Metadata = {
   title: { default: "MPlace Study", template: "%s · MPlace Study" },
@@ -22,8 +23,8 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f6f7f9" },
-    { media: "(prefers-color-scheme: dark)", color: "#1c1f24" },
+    { media: "(prefers-color-scheme: light)", color: "#f6f8fc" },
+    { media: "(prefers-color-scheme: dark)", color: "#171923" },
   ],
 };
 
