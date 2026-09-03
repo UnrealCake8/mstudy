@@ -72,7 +72,7 @@ export default function HomePage() {
           <div>
             <p className="lively-date">{now.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}</p>
             <h1>Hey, {firstName} 👋</h1>
-            <p>{current ? `${current.subject} is on now${current.room ? ` in Room ${current.room}` : ""}.` : next ? `${next.subject} is next at ${next.startTime}${next.room ? ` in Room ${next.room}` : ""}.` : "You’re clear for the rest of the day."}</p>
+            <p>{current ? `${current.subject} is on now${current.room ? ` in Room ${current.room}` : ""}.` : next ? `${next.subject} is next at ${next.startTime}${next.room ? ` in Room ${next.room}` : ""}.` : "Check your timetable for the rest of your day."}</p>
           </div>
         </header>
 
@@ -81,16 +81,16 @@ export default function HomePage() {
             <div className="summary-icon"><Clock3 size={18} /></div>
             <div>
               <span>Now</span>
-              <strong>{current?.subject || "No lesson"}</strong>
-              <small>{current ? `${current.startTime}–${current.endTime}` : "Nothing scheduled"}</small>
+              <strong>{current?.subject || "No lesson shown"}</strong>
+              <small>{current ? `${current.startTime}–${current.endTime}` : "Check timetable"}</small>
             </div>
           </article>
           <article className="summary-card summary-next">
             <div className="summary-icon"><TimerReset size={18} /></div>
             <div>
               <span>Next</span>
-              <strong>{next?.subject || "No more classes"}</strong>
-              <small>{next ? `${next.startTime}${next.room ? ` · Room ${next.room}` : ""}` : "Your day is clear"}</small>
+              <strong>{next?.subject || "Check timetable"}</strong>
+              <small>{next ? `${next.startTime}${next.room ? ` · Room ${next.room}` : ""}` : "See your full timetable"}</small>
             </div>
           </article>
           <article className="summary-card summary-due">
@@ -151,8 +151,8 @@ export default function HomePage() {
               )) : (
                 <div className="empty-state compact lively-empty">
                   <Clock3 size={21} />
-                  <strong>No classes today</strong>
-                  <span>Add your timetable to see your day here.</span>
+                  <strong>No timetable entries shown</strong>
+                  <span>Open your timetable to check your full day.</span>
                 </div>
               )}
             </div>
