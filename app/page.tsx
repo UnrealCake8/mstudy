@@ -131,32 +131,28 @@ export default function HomePage() {
             </div>
           </section>
 
-          <section className="lively-section lively-section-classes">
-            <div className="section-row lively-section-row">
-              <div>
-                <span className="section-kicker">Classes</span>
-                <h2 className="section-title">Today</h2>
+          {todayClasses.length > 0 ? (
+            <section className="lively-section lively-section-classes">
+              <div className="section-row lively-section-row">
+                <div>
+                  <span className="section-kicker">Classes</span>
+                  <h2 className="section-title">Today</h2>
+                </div>
+                <Link href="/timetable">Timetable</Link>
               </div>
-              <Link href="/timetable">Timetable</Link>
-            </div>
-            <div className="panel lively-panel timetable-panel">
-              {todayClasses.length ? todayClasses.map((item) => (
-                <div className="row lively-row timetable-row" key={item.id}>
-                  <span className="time-block">{item.startTime}</span>
-                  <div>
-                    <strong>{item.subject}</strong>
-                    <small>{item.room ? `Room ${item.room}` : "Room not set"}{item.teacher ? ` · ${item.teacher}` : ""}</small>
+              <div className="panel lively-panel timetable-panel">
+                {todayClasses.map((item) => (
+                  <div className="row lively-row timetable-row" key={item.id}>
+                    <span className="time-block">{item.startTime}</span>
+                    <div>
+                      <strong>{item.subject}</strong>
+                      <small>{item.room ? `Room ${item.room}` : "Room not set"}{item.teacher ? ` · ${item.teacher}` : ""}</small>
+                    </div>
                   </div>
-                </div>
-              )) : (
-                <div className="empty-state compact lively-empty">
-                  <Clock3 size={21} />
-                  <strong>No timetable entries shown</strong>
-                  <span>Open your timetable to check your full day.</span>
-                </div>
-              )}
-            </div>
-          </section>
+                ))}
+              </div>
+            </section>
+          ) : null}
         </div>
       </section>
     </AppShell>
