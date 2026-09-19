@@ -442,30 +442,73 @@ function isDoneSubmission(state?: string) {
   return state === "TURNED_IN" || state === "RETURNED";
 }
 
+function removeUndefined(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(removeUndefined);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, item]) => item !== undefined)
+        .map(([key, item]) => [key, removeUndefined(item)]),
+    );
+  }
+  return value;
+}
+
 async function commitInChunks(ops: BatchOp[]) {
   for (let i = 0; i < ops.length; i += 400) {
     const batch = writeBatch(db);
     ops
       .slice(i, i + 400)
       .forEach((op) =>
-        op.remove ? batch.delete(op.ref) : batch.set(op.ref, op.data || {}),
+        op.remove
+          ? batch.delete(op.ref)
+          : batch.set(op.ref, removeUndefined(op.data || {}) as Record<string, unknown>),
       );
     await batch.commit();
   }
 }
 
-export async function syncClassroom(user: User) {
-  try {
-    const result = await reauthenticateWithPopup(user, provider());
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    const token = credential?.accessToken;
-    if (!token)
-      throw new Error(
-        "Google did not return Classroom access. Try connecting again.",
-      );
+const CLASSROOM_TOKEN_KEY = "mstudy-classroom-token";
+const CLASSROOM_TOKEN_EXPIRY_KEY = "mstudy-classroom-token-expires";
 
-    const googleEmail =
-      result.user.email || user.email || "Unknown Google account";
+function cachedClassroomToken() {
+  if (typeof window === "undefined") return "";
+  const expires = Number(localStorage.getItem(CLASSROOM_TOKEN_EXPIRY_KEY) || 0);
+  if (Date.now() >= expires) {
+    localStorage.removeItem(CLASSROOM_TOKEN_KEY);
+    localStorage.removeItem(CLASSROOM_TOKEN_EXPIRY_KEY);
+    return "";
+  }
+  return localStorage.getItem(CLASSROOM_TOKEN_KEY) || "";
+}
+
+function cacheClassroomToken(token: string) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(CLASSROOM_TOKEN_KEY, token);
+  localStorage.setItem(CLASSROOM_TOKEN_EXPIRY_KEY, String(Date.now() + 50 * 60 * 1000));
+}
+
+export async function syncClassroom(
+  user: User,
+  options: { interactive?: boolean } = {},
+) {
+  const interactive = options.interactive !== false;
+  try {
+    let token = cachedClassroomToken();
+    let googleEmail = user.email || "Unknown Google account";
+
+    if (!token) {
+      if (!interactive) return null;
+      const result = await reauthenticateWithPopup(user, provider());
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      token = credential?.accessToken || "";
+      googleEmail = result.user.email || googleEmail;
+      if (!token)
+        throw new Error(
+          "Google did not return Classroom access. Try connecting again.",
+        );
+      cacheClassroomToken(token);
+    }
     const discovered = await allCourses(token);
     const courses = discovered.courses;
 
@@ -649,12 +692,29 @@ export async function syncClassroom(user: User) {
     );
     return { courses, assignments, resources, announcements, summary };
   } catch (error) {
+    if (!interactive) {
+      console.warn("Background Classroom sync skipped.", error);
+      return null;
+    }
     throw friendlyError(error);
   }
 }
 
+export async function syncClassroomInBackground(user: User) {
+  if (typeof window === "undefined") return null;
+  const attemptKey = `mstudy-classroom-auto-sync-${user.uid}`;
+  const previous = Number(sessionStorage.getItem(attemptKey) || 0);
+  if (Date.now() - previous < 10 * 60 * 1000) return null;
+  sessionStorage.setItem(attemptKey, String(Date.now()));
+  return syncClassroom(user, { interactive: false });
+}
+
 export async function disconnectClassroom(user: User) {
   try {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem(CLASSROOM_TOKEN_KEY);
+      localStorage.removeItem(CLASSROOM_TOKEN_EXPIRY_KEY);
+    }
     const [courses, assignments, resources, announcements] = await Promise.all([
       getDocs(collection(db, "users", user.uid, "classroomCourses")),
       getDocs(collection(db, "users", user.uid, "classroomAssignments")),

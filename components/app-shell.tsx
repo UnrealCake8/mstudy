@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { signOut } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
 import {
   Bell,
   BookOpen,
@@ -12,11 +13,13 @@ import {
   Home,
   LogOut,
   Menu,
+  MessageCircle,
   MoreHorizontal,
   Settings,
   X,
 } from "lucide-react";
-import { auth } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
+import { syncClassroomInBackground } from "@/lib/classroom";
 import { useAuth } from "@/components/auth/auth-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -25,12 +28,14 @@ const MPLACE_LOGO = "https://unrealcake8.github.io/cdn-hls/mplace.png";
 const mainNav = [
   ["/", "Today", Home],
   ["/planner", "Planner", CalendarDays],
+  ["/messages", "Messages", MessageCircle],
   ["/classes", "Classes", GraduationCap],
   ["/study", "Study", BookOpen],
 ] as const;
 
 const sectionRoutes: Record<string, string[]> = {
   "/planner": ["/planner", "/homework", "/calendar", "/events", "/classroom", "/after-school"],
+  "/messages": ["/messages"],
   "/classes": ["/classes", "/timetable", "/class-locator"],
   "/study": ["/study", "/notes", "/play", "/team", "/practice-papers"],
 };
@@ -53,6 +58,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [loading, user, router]);
 
   useEffect(() => setMenuOpen(false), [pathname]);
+
+  useEffect(() => {
+    if (!user) return;
+    void (async () => {
+      try {
+        const profile = await getDoc(doc(db, "users", user.uid));
+        if (profile.data()?.classroomConnected) await syncClassroomInBackground(user);
+      } catch (error) {
+        console.warn("Automatic Classroom sync was skipped.", error);
+      }
+    })();
+  }, [user]);
 
   if (loading || !user) {
     return (
@@ -101,7 +118,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <MoreHorizontal size={20} />
           </button>
           <Link href="/settings" className="student-avatar" aria-label="Open profile and settings">
-            {avatarLetter}
+            {user.photoURL ? <img src={user.photoURL} alt="" /> : avatarLetter}
           </Link>
         </div>
 
@@ -121,7 +138,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         <div className="student-drawer-head">
           <div className="student-drawer-identity">
-            <div className="student-avatar large">{avatarLetter}</div>
+            <div className="student-avatar large">{user.photoURL ? <img src={user.photoURL} alt="" /> : avatarLetter}</div>
             <div>
               <strong>{user.displayName ?? "Student"}</strong>
               <small>{user.email}</small>
