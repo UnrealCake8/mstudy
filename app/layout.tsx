@@ -10,7 +10,7 @@ import "./ipad.css";
 import "./student-life.css";
 import "./practice-tools.css";
 import "./redesign.css";
-import "./google-material.css";
+import "./student-workspace.css";
 
 export const metadata: Metadata = {
   title: { default: "MPlace Study", template: "%s · MPlace Study" },
@@ -24,8 +24,8 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f6f8fc" },
-    { media: "(prefers-color-scheme: dark)", color: "#171923" },
+    { media: "(prefers-color-scheme: light)", color: "#f6f4ee" },
+    { media: "(prefers-color-scheme: dark)", color: "#151a24" },
   ],
 };
 
@@ -52,7 +52,7 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
-          href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap"
+          href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap"
           rel="stylesheet"
         />
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />

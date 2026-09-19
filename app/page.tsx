@@ -1,7 +1,17 @@
 "use client";
+
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { BookOpenCheck, CheckCircle2, Clock3, TimerReset } from "lucide-react";
+import {
+  ArrowRight,
+  BookOpenCheck,
+  CalendarDays,
+  CheckCircle2,
+  Clock3,
+  MapPin,
+  NotebookPen,
+  Sparkles,
+} from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Homework, subscribeCollection, TimetableClass } from "@/lib/data";
@@ -11,12 +21,12 @@ import { assignmentVisibilityId, subscribeHiddenAssignments } from "@/lib/assign
 const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 function due(value: string) {
-  if (!value) return "No due date";
+  if (!value) return "No date";
   const d = new Date(`${value}T00:00:00`);
   const t = new Date();
   t.setHours(0, 0, 0, 0);
   const n = Math.round((d.getTime() - t.getTime()) / 86400000);
-  return n === 0 ? "Today" : n === 1 ? "Tomorrow" : d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  return n === 0 ? "Due today" : n === 1 ? "Tomorrow" : d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
 export default function HomePage() {
@@ -43,6 +53,8 @@ export default function HomePage() {
   const now = new Date();
   const today = dayNames[now.getDay()];
   const time = now.toTimeString().slice(0, 5);
+  const hour = now.getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
   const todayClasses = useMemo(
     () => classes.filter((item) => item.day.toLowerCase() === today.toLowerCase()).sort((a, b) => a.startTime.localeCompare(b.startTime)),
@@ -51,6 +63,7 @@ export default function HomePage() {
 
   const current = todayClasses.find((item) => item.startTime <= time && item.endTime > time);
   const next = todayClasses.find((item) => item.startTime > time);
+  const featuredLesson = current || next;
   const courseNames = useMemo(() => new Map(courses.map((course) => [course.id, course.name])), [courses]);
 
   const pending = useMemo(
@@ -67,93 +80,106 @@ export default function HomePage() {
 
   return (
     <AppShell>
-      <section className="page lively-dashboard">
-        <header className="lively-home-head">
-          <div>
-            <p className="lively-date">{now.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}</p>
-            <h1>Good day, {firstName}</h1>
-            <p>{current ? `${current.subject} is on now${current.room ? ` in Room ${current.room}` : ""}.` : next ? `${next.subject} is next at ${next.startTime}${next.room ? ` in Room ${next.room}` : ""}.` : "Check your timetable for the rest of your day."}</p>
+      <section className="page student-dashboard">
+        <header className="student-welcome">
+          <div className="welcome-copy">
+            <p className="student-date">{now.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}</p>
+            <h1>{greeting}, {firstName}.</h1>
+            <p>{current ? "You’re in the middle of your school day." : next ? "Here’s what is coming up next." : "You’re all caught up with today’s timetable."}</p>
+          </div>
+          <div className="day-progress" aria-label={`${todayClasses.length} lessons today`}>
+            <span>{todayClasses.length}</span>
+            <small>{todayClasses.length === 1 ? "lesson today" : "lessons today"}</small>
           </div>
         </header>
 
-        <div className="lively-summary-strip">
-          <article className="summary-card summary-now">
-            <div className="summary-icon"><Clock3 size={18} /></div>
-            <div>
-              <span>Now</span>
-              <strong>{current?.subject || "No lesson shown"}</strong>
-              <small>{current ? `${current.startTime}–${current.endTime}` : "Check timetable"}</small>
+        <div className="student-dashboard-grid">
+          <section className="lesson-spotlight">
+            <div className="spotlight-topline">
+              <span className={current ? "live-dot" : "next-dot"} />
+              <span>{current ? "Happening now" : "Up next"}</span>
             </div>
-          </article>
-          <article className="summary-card summary-next">
-            <div className="summary-icon"><TimerReset size={18} /></div>
-            <div>
-              <span>Next</span>
-              <strong>{next?.subject || "Check timetable"}</strong>
-              <small>{next ? `${next.startTime}${next.room ? ` · Room ${next.room}` : ""}` : "See your full timetable"}</small>
-            </div>
-          </article>
-          <article className="summary-card summary-due">
-            <div className="summary-icon"><BookOpenCheck size={18} /></div>
-            <div>
-              <span>Due soon</span>
-              <strong>{pending.length}</strong>
-              <small>{pending.length === 1 ? "item" : "items"}</small>
-            </div>
-          </article>
-        </div>
-
-        <div className="lively-main-grid">
-          <section className="lively-section lively-section-planner">
-            <div className="section-row lively-section-row">
-              <div>
-                <span className="section-kicker">Your work</span>
-                <h2 className="section-title">Due soon</h2>
+            {featuredLesson ? (
+              <>
+                <h2>{featuredLesson.subject}</h2>
+                <div className="lesson-details">
+                  <span><Clock3 size={17} />{featuredLesson.startTime}–{featuredLesson.endTime}</span>
+                  <span><MapPin size={17} />{featuredLesson.room ? `Room ${featuredLesson.room}` : "Room not set"}</span>
+                </div>
+                {featuredLesson.teacher ? <p className="lesson-teacher">{featuredLesson.teacher}</p> : null}
+                <Link href="/timetable" className="spotlight-link">Open timetable <ArrowRight size={17} /></Link>
+              </>
+            ) : (
+              <div className="no-lesson">
+                <CheckCircle2 size={30} />
+                <h2>No more lessons shown</h2>
+                <p>Take a look at your timetable if you want to plan ahead.</p>
+                <Link href="/timetable" className="spotlight-link">Open timetable <ArrowRight size={17} /></Link>
               </div>
-              <Link href="/planner">View all</Link>
+            )}
+          </section>
+
+          <section className="student-work-card">
+            <div className="student-section-head">
+              <div>
+                <span>Homework</span>
+                <h2>Coming up</h2>
+              </div>
+              <Link href="/planner">See all</Link>
             </div>
-            <div className="panel lively-panel">
+            <div className="student-work-list">
               {pending.length ? pending.map((task) => (
-                <div className="row lively-row" key={task.id}>
+                <Link href="/homework" className="student-work-row" key={task.id}>
+                  <div className="work-subject-mark"><BookOpenCheck size={17} /></div>
                   <div>
                     <strong>{task.title}</strong>
-                    <small>{task.subject}</small>
+                    <small>{task.subject || "Assignment"}</small>
                   </div>
-                  <span className="due-chip">{due(task.date)}</span>
-                </div>
+                  <span className="work-due">{due(task.date)}</span>
+                </Link>
               )) : (
-                <div className="empty-state compact lively-empty">
-                  <CheckCircle2 size={21} />
+                <div className="student-empty">
+                  <CheckCircle2 size={25} />
                   <strong>Nothing due soon</strong>
-                  <span>You’re caught up.</span>
+                  <span>Your next assignment will appear here.</span>
                 </div>
               )}
             </div>
           </section>
-
-          {todayClasses.length > 0 ? (
-            <section className="lively-section lively-section-classes">
-              <div className="section-row lively-section-row">
-                <div>
-                  <span className="section-kicker">Schedule</span>
-                  <h2 className="section-title">Today</h2>
-                </div>
-                <Link href="/timetable">Timetable</Link>
-              </div>
-              <div className="panel lively-panel timetable-panel">
-                {todayClasses.map((item) => (
-                  <div className="row lively-row timetable-row" key={item.id}>
-                    <span className="time-block">{item.startTime}</span>
-                    <div>
-                      <strong>{item.subject}</strong>
-                      <small>{item.room ? `Room ${item.room}` : "Room not set"}{item.teacher ? ` · ${item.teacher}` : ""}</small>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          ) : null}
         </div>
+
+        <section className="today-schedule-section">
+          <div className="student-section-head">
+            <div><span>Your day</span><h2>Today’s lessons</h2></div>
+            <Link href="/timetable">Full week</Link>
+          </div>
+          {todayClasses.length ? (
+            <div className="lesson-strip">
+              {todayClasses.map((item) => {
+                const isCurrent = item.startTime <= time && item.endTime > time;
+                return (
+                  <article className={isCurrent ? "lesson-chip current" : "lesson-chip"} key={item.id}>
+                    <span className="lesson-time">{item.startTime}</span>
+                    <strong>{item.subject}</strong>
+                    <small>{item.room ? `Room ${item.room}` : "Room not set"}</small>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="schedule-empty">No lessons have been added for {today} yet.</div>
+          )}
+        </section>
+
+        <section className="quick-tools-section">
+          <div className="student-section-head"><div><span>Shortcuts</span><h2>Get things done</h2></div></div>
+          <div className="student-quick-tools">
+            <Link href="/homework"><span className="quick-icon coral"><BookOpenCheck size={21} /></span><div><strong>Assignments</strong><small>Add or finish homework</small></div><ArrowRight size={18} /></Link>
+            <Link href="/calendar"><span className="quick-icon blue"><CalendarDays size={21} /></span><div><strong>Calendar</strong><small>Check dates and events</small></div><ArrowRight size={18} /></Link>
+            <Link href="/notes"><span className="quick-icon mint"><NotebookPen size={21} /></span><div><strong>Notes</strong><small>Pick up your revision</small></div><ArrowRight size={18} /></Link>
+            <Link href="/practice-papers"><span className="quick-icon lilac"><Sparkles size={21} /></span><div><strong>Practice</strong><small>Make a practice paper</small></div><ArrowRight size={18} /></Link>
+          </div>
+        </section>
       </section>
     </AppShell>
   );
