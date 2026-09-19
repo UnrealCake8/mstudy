@@ -10,6 +10,7 @@ import "./ipad.css";
 import "./student-life.css";
 import "./practice-tools.css";
 import "./redesign.css";
+import "./google-material.css";
 
 export const metadata: Metadata = {
   title: { default: "MPlace Study", template: "%s · MPlace Study" },
@@ -48,6 +49,12 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap"
+          rel="stylesheet"
+        />
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         {mAdsEnabled ? (
           <script
