@@ -71,7 +71,7 @@ export default function HomePage() {
         <header className="lively-home-head">
           <div>
             <p className="lively-date">{now.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}</p>
-            <h1>Hey, {firstName} 👋</h1>
+            <h1>Good day, {firstName}</h1>
             <p>{current ? `${current.subject} is on now${current.room ? ` in Room ${current.room}` : ""}.` : next ? `${next.subject} is next at ${next.startTime}${next.room ? ` in Room ${next.room}` : ""}.` : "Check your timetable for the rest of your day."}</p>
           </div>
         </header>
@@ -107,7 +107,7 @@ export default function HomePage() {
           <section className="lively-section lively-section-planner">
             <div className="section-row lively-section-row">
               <div>
-                <span className="section-kicker">Planner</span>
+                <span className="section-kicker">Your work</span>
                 <h2 className="section-title">Due soon</h2>
               </div>
               <Link href="/planner">View all</Link>
@@ -135,7 +135,7 @@ export default function HomePage() {
             <section className="lively-section lively-section-classes">
               <div className="section-row lively-section-row">
                 <div>
-                  <span className="section-kicker">Classes</span>
+                  <span className="section-kicker">Schedule</span>
                   <h2 className="section-title">Today</h2>
                 </div>
                 <Link href="/timetable">Timetable</Link>
