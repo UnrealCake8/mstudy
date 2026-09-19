@@ -15,7 +15,7 @@ import {
 import { AppShell } from "@/components/app-shell";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Homework, subscribeCollection } from "@/lib/data";
-import type { ClassroomAssignment, ClassroomCourse } from "@/lib/classroom";
+import { isCurrentClassroomItem, type ClassroomAssignment, type ClassroomCourse } from "@/lib/classroom";
 import { assignmentVisibilityId, subscribeHiddenAssignments } from "@/lib/assignment-visibility";
 import {
   SchoolTimetable,
@@ -70,7 +70,10 @@ export default function HomePage() {
     () => [
       ...tasks.filter((task) => !task.completed).map((task) => ({ id: `manual-${task.id}`, title: task.title, subject: task.subject, date: task.dueDate })),
       ...classroomTasks
-        .filter((task) => !hidden.has(assignmentVisibilityId(task.courseId, task.id)))
+        .filter((task) =>
+          isCurrentClassroomItem(task) &&
+          !hidden.has(assignmentVisibilityId(task.courseId, task.id)),
+        )
         .map((task) => ({ id: `classroom-${task.courseId}-${task.id}`, title: task.title, subject: courseNames.get(task.courseId) || "Classroom", date: task.dueDate || "" })),
     ].sort((a, b) => (a.date || "9999").localeCompare(b.date || "9999")).slice(0, 5),
     [tasks, classroomTasks, hidden, courseNames],

@@ -53,6 +53,8 @@ export type ClassroomAssignment = {
   dueDate?: string;
   dueTime?: string;
   state?: string;
+  creationTime?: string;
+  updateTime?: string;
   materials?: ClassroomMaterial[];
 };
 
@@ -442,6 +444,22 @@ function isDoneSubmission(state?: string) {
   return state === "TURNED_IN" || state === "RETURNED";
 }
 
+export function classroomAcademicYearCutoff(now = new Date()) {
+  const year = now.getMonth() >= 7 ? now.getFullYear() : now.getFullYear() - 1;
+  return `${year}-08-01`;
+}
+
+export function isCurrentClassroomItem(item: {
+  dueDate?: string;
+  creationTime?: string;
+  updateTime?: string;
+}) {
+  const cutoff = classroomAcademicYearCutoff();
+  if (item.dueDate) return item.dueDate.slice(0, 10) >= cutoff;
+  const activityDate = item.updateTime || item.creationTime || "";
+  return !activityDate || activityDate.slice(0, 10) >= cutoff;
+}
+
 function removeUndefined(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(removeUndefined);
   if (value && typeof value === "object") {
@@ -528,7 +546,13 @@ export async function syncClassroom(
               return Promise.all(
                 items
                   .filter(
-                    (item) => !isDoneSubmission(submissionStates.get(item.id)),
+                    (item) =>
+                      !isDoneSubmission(submissionStates.get(item.id)) &&
+                      isCurrentClassroomItem({
+                        dueDate: formatDate(item.dueDate),
+                        creationTime: item.creationTime,
+                        updateTime: item.updateTime,
+                      }),
                   )
                   .map(
                     async (item) =>
@@ -541,6 +565,8 @@ export async function syncClassroom(
                         dueDate: formatDate(item.dueDate),
                         dueTime: formatTime(item.dueTime),
                         state: item.state || "",
+                        creationTime: item.creationTime || "",
+                        updateTime: item.updateTime || "",
                         materials: await enrichMaterials(
                           normalizeMaterials(item.materials),
                           token,
@@ -592,7 +618,12 @@ export async function syncClassroom(
             try {
               const items = await allAnnouncements(course.id, token);
               return Promise.all(
-                items.map(
+                items
+                  .filter((item) => isCurrentClassroomItem({
+                    creationTime: item.creationTime,
+                    updateTime: item.updateTime,
+                  }))
+                  .map(
                   async (item) =>
                     ({
                       id: item.id,
