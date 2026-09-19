@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Ban, MessageCircle, Search, Send, Trash2, Users, X } from "lucide-react";
+import { Ban, Info, MessageCircle, Search, Send, Trash2, UserPlus, Users, X } from "lucide-react";
 import { useAuth } from "@/components/auth/auth-provider";
 import {
   blockUser,
@@ -19,8 +19,22 @@ import {
   sendMessage,
   subscribeConversations,
   subscribeMessages,
+  timestampMs,
   unblockUser,
 } from "@/lib/chat";
+
+function Avatar({ profile, size = "normal" }: { profile?: ChatProfile; size?: "normal" | "large" }) {
+  const initial = (profile?.name || "S")[0].toUpperCase();
+  return <span className={size === "large" ? "chat-avatar large" : "chat-avatar"}>
+    {profile?.photoURL ? <img src={profile.photoURL} alt=""/> : initial}
+  </span>;
+}
+
+function timeLabel(value: unknown) {
+  const ms = timestampMs(value);
+  if (!ms) return "";
+  return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date(ms));
+}
 
 export function MessagesPage() {
   const { user } = useAuth();
@@ -49,107 +63,88 @@ export function MessagesPage() {
         const ok = await isChatDomainAllowed(email);
         setAllowed(ok);
         if (!ok) return;
-        await ensureChatProfile(user.uid, email, user.displayName);
+        await ensureChatProfile(user.uid, email, user.displayName, user.photoURL);
         const all = await listChatProfiles();
         setProfiles(all);
-        setProfile(
-          all.find(item => item.uid === user.uid) || {
-            uid: user.uid,
-            name: user.displayName || email.split("@")[0],
-            email,
-            domain: email.split("@")[1],
-            nameLower: (user.displayName || email.split("@")[0]).toLowerCase(),
-          }
-        );
+        setProfile(all.find(item => item.uid === user.uid) || {
+          uid: user.uid,
+          name: user.displayName || email.split("@")[0],
+          email,
+          domain: email.split("@")[1],
+          nameLower: (user.displayName || email).toLowerCase(),
+          photoURL: user.photoURL || "",
+        });
       } catch (error) {
         setAllowed(false);
-        setStatus(error instanceof Error ? error.message : "Could not initialise Messages.");
+        setStatus(error instanceof Error ? error.message : "Could not open Messages.");
       }
     })();
   }, [user]);
 
   useEffect(() => {
     if (!user || !allowed) return;
-    return subscribeConversations(user.uid, items => {
-      setConversations(items);
-      setPendingActive(current => current && items.some(item => item.id === current.id) ? null : current);
-    });
+    return subscribeConversations(user.uid, setConversations);
   }, [user, allowed]);
 
+  const active = conversations.find(item => item.id === activeId) || (pendingActive?.id === activeId ? pendingActive : null);
   useEffect(() => {
-    setMessages([]);
-    if (!activeId) return;
+    if (!activeId) { setMessages([]); return; }
     return subscribeMessages(activeId, setMessages);
   }, [activeId]);
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const profileMap = useMemo(() => new Map(profiles.map(item => [item.uid, item])), [profiles]);
+  const results = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return [];
+    return profiles.filter(item => item.uid !== user?.uid && (item.nameLower.includes(term) || item.email.toLowerCase().includes(term))).slice(0, 20);
+  }, [profiles, search, user?.uid]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages.length, activeId]);
-
-  const active = conversations.find(item => item.id === activeId) || (pendingActive?.id === activeId ? pendingActive : null);
-  const names = useMemo(() => new Map(profiles.map(item => [item.uid, item.name])), [profiles]);
-  const results = profiles
-    .filter(item => item.uid !== user?.uid && (`${item.name} ${item.email}`).toLowerCase().includes(search.trim().toLowerCase()))
-    .slice(0, 20);
-
-  useEffect(() => {
-    if (!active || !user || active.type !== "direct") {
-      setBlocked(false);
-      return;
-    }
+    if (!user || !active || active.type !== "direct") { setBlocked(false); return; }
     const other = active.members.find(uid => uid !== user.uid);
-    if (!other) return;
-    void Promise.all([isUserBlocked(user.uid, other), isUserBlocked(other, user.uid)])
-      .then(([a, b]) => setBlocked(a || b))
-      .catch(() => setBlocked(false));
+    if (other) void isUserBlocked(user.uid, other).then(setBlocked);
   }, [active, user]);
 
+  function conversationDetails(conversation: ChatConversation) {
+    if (conversation.type === "group") return { label: conversation.title, person: undefined };
+    const other = conversation.members.find(uid => uid !== user?.uid);
+    const person = profileMap.get(other || "");
+    return { label: person?.name || "Student", person };
+  }
+
   async function openDm(other: ChatProfile) {
-    if (!profile || openingUid) return;
+    if (!profile) return;
     setOpeningUid(other.uid);
     setStatus("");
     try {
       const id = await createDirectConversation(profile, other);
-      const optimistic: ChatConversation = {
-        id,
-        type: "direct",
-        title: "",
-        members: [profile.uid, other.uid].sort(),
-        ownerUid: profile.uid,
-        createdBy: profile.uid,
-        lastMessage: "",
-      };
-      setPendingActive(optimistic);
+      setPendingActive({ id, type: "direct", title: "", members: [profile.uid, other.uid], ownerUid: profile.uid, createdBy: profile.uid });
       setActiveId(id);
       setSearch("");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Could not open this chat.");
+      setStatus(error instanceof Error ? error.message : "Could not open chat.");
     } finally {
       setOpeningUid("");
     }
   }
 
   async function makeGroup() {
-    if (!user) return;
-    const title = window.prompt("Group name") || "";
+    if (!user || groupMembers.length < 2) {
+      setStatus("Choose at least two students for a group.");
+      return;
+    }
+    const title = window.prompt("Name this group", "Study group") || "";
     if (!title.trim()) return;
-    setStatus("");
     try {
       const id = await createGroupConversation(user.uid, title, groupMembers);
-      const optimistic: ChatConversation = {
-        id,
-        type: "group",
-        title: title.trim(),
-        members: Array.from(new Set([user.uid, ...groupMembers])),
-        ownerUid: user.uid,
-        createdBy: user.uid,
-        lastMessage: "",
-      };
-      setPendingActive(optimistic);
+      setPendingActive({ id, type: "group", title, members: [user.uid, ...groupMembers], ownerUid: user.uid, createdBy: user.uid });
+      setActiveId(id);
       setGroupMode(false);
       setGroupMembers([]);
       setSearch("");
-      setActiveId(id);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not create group.");
     }
@@ -176,74 +171,75 @@ export function MessagesPage() {
     if (!user || !active || active.type !== "direct") return;
     const other = active.members.find(uid => uid !== user.uid);
     if (!other) return;
-    try {
-      if (blocked) {
-        await unblockUser(user.uid, other);
-        setBlocked(false);
-      } else {
-        await blockUser(user.uid, other);
-        setBlocked(true);
-      }
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Could not update block setting.");
-    }
+    if (blocked) await unblockUser(user.uid, other);
+    else await blockUser(user.uid, other);
+    setBlocked(!blocked);
   }
 
-  if (allowed === null) return <section className="page"><p>Checking school messaging access…</p></section>;
-  if (!allowed) return <section className="page"><div className="admin-lock"><MessageCircle size={32}/><h1>Messages is for approved schools</h1><p>Your school email domain has not been enabled for MStudy internal messaging.</p>{status ? <p>{status}</p> : null}</div></section>;
+  if (allowed === null) return <section className="page"><p>Opening Messages…</p></section>;
+  if (!allowed) return <section className="page"><div className="admin-lock"><MessageCircle size={32}/><h1>Messages is for approved schools</h1><p>Your school email domain has not been enabled for internal messaging.</p>{status ? <p>{status}</p> : null}</div></section>;
 
-  const activeLabel = active
-    ? active.type === "group"
-      ? active.title
-      : names.get(active.members.find(uid => uid !== user?.uid) || "") || "Student"
-    : "";
+  const activeDetails = active ? conversationDetails(active) : null;
 
   return <section className="page chat-page">
-    <div className="page-head">
-      <div><p className="eyebrow">Internal school messaging</p><h1>Messages</h1><p>Search for a student, open a conversation and text in real time.</p></div>
-      <button className="secondary-button" onClick={() => { setGroupMode(value => !value); setSearch(""); }}><Users size={16}/> {groupMode ? "Cancel group" : "New group"}</button>
+    <div className="page-head chat-page-head">
+      <div><p className="eyebrow">Your school community</p><h1>Messages</h1><p>Direct messages and study groups, all inside MPlace Study.</p></div>
+      <button className="primary-button" onClick={() => { setGroupMode(value => !value); setSearch(""); }}><Users size={17}/>{groupMode ? "Cancel group" : "New group"}</button>
     </div>
 
     {status ? <div className="notice">{status}</div> : null}
 
     <div className="chat-layout">
       <aside className={active ? "chat-sidebar chat-sidebar-mobile-hidden" : "chat-sidebar"}>
-        <div className="chat-search"><Search size={16}/><input placeholder={groupMode ? "Search students to add" : "Search students by name"} value={search} onChange={event => setSearch(event.target.value)}/>{search ? <button className="chat-clear" onClick={() => setSearch("")} aria-label="Clear search"><X size={14}/></button> : null}</div>
+        <div className="chat-me">
+          <Avatar profile={profile || undefined}/>
+          <div><strong>{profile?.name}</strong><small>{profile?.status || "Available"}</small></div>
+        </div>
+        <div className="chat-search"><Search size={17}/><input placeholder={groupMode ? "Find students to add" : "Find a student"} value={search} onChange={event => setSearch(event.target.value)}/>{search ? <button className="chat-clear" onClick={() => setSearch("")} aria-label="Clear"><X size={15}/></button> : null}</div>
 
         {search ? <div className="chat-search-results">
           {results.length ? results.map(item => <button key={item.uid} disabled={openingUid === item.uid} onClick={() => groupMode ? setGroupMembers(current => current.includes(item.uid) ? current.filter(uid => uid !== item.uid) : [...current, item.uid]) : void openDm(item)}>
-            <span><strong>{item.name}</strong><small>{item.email}</small></span>
-            <span>{groupMode ? (groupMembers.includes(item.uid) ? "Selected" : "Add") : (openingUid === item.uid ? "Opening…" : "Message")}</span>
-          </button>) : <div className="chat-no-results">No matching students yet. They need to sign in to MStudy once before appearing here.</div>}
+            <Avatar profile={item}/><span><strong>{item.name}</strong><small>{item.status || item.email}</small></span>
+            <em>{groupMode ? (groupMembers.includes(item.uid) ? "Added" : "Add") : "Chat"}</em>
+          </button>) : <div className="chat-no-results">No matching students. They need to sign in once before appearing here.</div>}
         </div> : null}
 
-        {groupMode && groupMembers.length ? <button className="primary-button" onClick={() => void makeGroup()}>Create group ({groupMembers.length + 1})</button> : null}
+        {groupMode && groupMembers.length ? <button className="primary-button chat-create-group" onClick={() => void makeGroup()}><UserPlus size={16}/>Create group ({groupMembers.length + 1})</button> : null}
 
+        <p className="chat-list-label">Conversations</p>
         <div className="chat-conversations">
           {conversations.length ? conversations.map(conversation => {
-            const other = conversation.type === "direct" ? conversation.members.find(uid => uid !== user?.uid) : null;
-            const label = conversation.type === "group" ? conversation.title : names.get(other || "") || "Student";
-            return <button className={activeId === conversation.id ? "active" : ""} key={conversation.id} onClick={() => { setPendingActive(null); setActiveId(conversation.id); }}><strong>{label}</strong><small>{conversation.lastMessage || "Open chat"}</small></button>;
-          }) : !search ? <div className="chat-no-results">No conversations yet. Search for a student above to start one.</div> : null}
+            const details = conversationDetails(conversation);
+            return <button className={activeId === conversation.id ? "active" : ""} key={conversation.id} onClick={() => { setPendingActive(null); setActiveId(conversation.id); }}>
+              {conversation.type === "group" ? <span className="chat-avatar group"><Users size={17}/></span> : <Avatar profile={details.person}/>}
+              <span><strong>{details.label}</strong><small>{conversation.lastMessage || "Start chatting"}</small></span>
+            </button>;
+          }) : !search ? <div className="chat-no-results">No conversations yet. Search above to start one.</div> : null}
         </div>
       </aside>
 
       <main className={active ? "chat-thread chat-thread-open" : "chat-thread"}>
-        {!active ? <div className="chat-empty"><MessageCircle size={36}/><h2>Start a conversation</h2><p>Search for a student and press Message.</p></div> : <>
+        {!active ? <div className="chat-empty"><MessageCircle size={38}/><h2>Your conversations</h2><p>Choose a chat or search for someone new.</p></div> : <>
           <header className="chat-thread-head">
-            <div className="chat-thread-title"><button className="chat-back" onClick={() => setActiveId("")} aria-label="Back to conversations">‹</button><div><strong>{activeLabel}</strong><small>{active.type === "group" ? `${active.members.length} members` : "Direct message"}</small></div></div>
-            {active.type === "direct" ? <button className="text-button" onClick={() => void toggleBlock()}><Ban size={15}/>{blocked ? "Unblock" : "Block"}</button> : null}
+            <div className="chat-thread-title">
+              <button className="chat-back" onClick={() => setActiveId("")} aria-label="Back">‹</button>
+              {active.type === "group" ? <span className="chat-avatar large group"><Users size={20}/></span> : <Avatar profile={activeDetails?.person} size="large"/>}
+              <div><strong>{activeDetails?.label}</strong><small>{active.type === "group" ? `${active.members.length} members` : activeDetails?.person?.status || "Direct message"}</small></div>
+            </div>
+            {active.type === "direct" ? <button className="chat-info-button" onClick={() => void toggleBlock()} title={blocked ? "Unblock student" : "Block student"}><Ban size={17}/></button> : <button className="chat-info-button" title="Group information"><Info size={18}/></button>}
           </header>
 
           <div className="chat-messages">
-            {!messages.length ? <div className="chat-thread-empty"><MessageCircle size={26}/><strong>No messages yet</strong><span>Send the first message below.</span></div> : null}
+            {!messages.length ? <div className="chat-thread-empty"><MessageCircle size={27}/><strong>No messages yet</strong><span>Say hello below.</span></div> : null}
             {messages.map(message => {
               const mine = message.senderUid === user?.uid;
-              return <div className={mine ? "chat-bubble mine" : "chat-bubble"} key={message.id}>
-                <small>{mine ? "You" : names.get(message.senderUid) || "Student"}</small>
-                <p>{message.text}</p>
-                <div className="chat-message-actions">
-                  {mine ? <button onClick={() => void deleteOwnMessage(active.id, message.id)} title="Delete message"><Trash2 size={13}/></button> : <button onClick={() => { const reason = window.prompt("Why are you reporting this message?") || ""; if (reason && user) void reportMessage(active.id, message, user.uid, reason); }} title="Report message">Report</button>}
+              const sender = profileMap.get(message.senderUid);
+              return <div className={mine ? "chat-message-line mine" : "chat-message-line"} key={message.id}>
+                {!mine ? <Avatar profile={sender}/> : null}
+                <div className={mine ? "chat-bubble mine" : "chat-bubble"}>
+                  {!mine && active.type === "group" ? <small className="chat-sender-name">{sender?.name || "Student"}</small> : null}
+                  <p>{message.text}</p>
+                  <div className="chat-message-meta"><span>{timeLabel(message.createdAt)}</span>{mine ? <button onClick={() => void deleteOwnMessage(active.id, message.id)} title="Delete"><Trash2 size={12}/></button> : <button onClick={() => { const reason = window.prompt("Why are you reporting this message?") || ""; if (reason && user) void reportMessage(active.id, message, user.uid, reason); }}>Report</button>}</div>
                 </div>
               </div>;
             })}
@@ -251,8 +247,8 @@ export function MessagesPage() {
           </div>
 
           <form className="chat-compose" onSubmit={submit}>
-            <input autoFocus value={draft} onChange={event => setDraft(event.target.value)} disabled={blocked || sending} maxLength={2000} placeholder={blocked ? "Messaging blocked" : "Type a message…"}/>
-            <button className="primary-button" disabled={blocked || sending || !draft.trim()} aria-label="Send message"><Send size={16}/></button>
+            <input value={draft} onChange={event => setDraft(event.target.value)} disabled={blocked || sending} maxLength={2000} placeholder={blocked ? "Messaging is blocked" : `Message ${activeDetails?.label || ""}`}/>
+            <button disabled={blocked || sending || !draft.trim()} aria-label="Send"><Send size={18}/></button>
           </form>
         </>}
       </main>

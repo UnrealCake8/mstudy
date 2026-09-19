@@ -25,6 +25,8 @@ export type ChatProfile = {
   email: string;
   domain: string;
   nameLower: string;
+  photoURL?: string;
+  status?: string;
   createdAt?: unknown;
   updatedAt?: unknown;
 };
@@ -67,7 +69,7 @@ export async function isChatDomainAllowed(email?: string | null) {
   return (await getDoc(doc(db, "chatDomains", domain))).exists();
 }
 
-export async function ensureChatProfile(uid: string, email: string, displayName?: string | null) {
+export async function ensureChatProfile(uid: string, email: string, displayName?: string | null, photoURL?: string | null) {
   const domain = emailDomain(email);
   if (!(await isChatDomainAllowed(email))) return false;
   const name = (displayName?.trim() || email.split("@")[0] || "Student").slice(0, 80);
@@ -77,9 +79,29 @@ export async function ensureChatProfile(uid: string, email: string, displayName?
     email: email.toLowerCase(),
     domain,
     nameLower: name.toLowerCase(),
+    photoURL: photoURL || "",
     updatedAt: serverTimestamp(),
   }, { merge: true });
   return true;
+}
+
+export async function saveChatProfile(
+  uid: string,
+  email: string,
+  input: { name: string; photoURL?: string; status?: string },
+) {
+  const domain = emailDomain(email);
+  const name = input.name.trim().slice(0, 80) || email.split("@")[0] || "Student";
+  await setDoc(doc(db, "chatProfiles", uid), {
+    uid,
+    name,
+    email: email.toLowerCase(),
+    domain,
+    nameLower: name.toLowerCase(),
+    photoURL: (input.photoURL || "").trim().slice(0, 1000),
+    status: (input.status || "").trim().slice(0, 120),
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
 }
 
 export async function listChatProfiles() {
