@@ -66,7 +66,7 @@ export default function HomePage() {
   const timetableUrl = timetable?.pdfUrl || BASE_TIMETABLE_URL;
   const timetableLabel = timetable?.label || profile?.assignedTimetableLabel || "School timetable";
 
-  const pending = useMemo(
+  const allPending = useMemo(
     () => [
       ...tasks.filter((task) => !task.completed).map((task) => ({ id: `manual-${task.id}`, title: task.title, subject: task.subject, date: task.dueDate })),
       ...classroomTasks
@@ -75,8 +75,16 @@ export default function HomePage() {
           !hidden.has(assignmentVisibilityId(task.courseId, task.id)),
         )
         .map((task) => ({ id: `classroom-${task.courseId}-${task.id}`, title: task.title, subject: courseNames.get(task.courseId) || "Classroom", date: task.dueDate || "" })),
-    ].sort((a, b) => (a.date || "9999").localeCompare(b.date || "9999")).slice(0, 5),
+    ],
     [tasks, classroomTasks, hidden, courseNames],
+  );
+  const pending = useMemo(
+    () => allPending.filter((task) => task.date).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 5),
+    [allPending],
+  );
+  const undated = useMemo(
+    () => allPending.filter((task) => !task.date).slice(0, 3),
+    [allPending],
   );
 
   const firstName = profile?.name?.split(" ")[0] || user?.displayName?.split(" ")[0] || "Student";
@@ -111,15 +119,29 @@ export default function HomePage() {
               <Link href="/planner">See all</Link>
             </div>
             <div className="student-work-list">
-              {pending.length ? pending.map((task) => (
-                <Link href="/homework" className="student-work-row" key={task.id}>
-                  <div className="work-subject-mark"><BookOpenCheck size={17}/></div>
-                  <div><strong>{task.title}</strong><small>{task.subject || "Assignment"}</small></div>
-                  <span className="work-due">{due(task.date)}</span>
-                </Link>
-              )) : (
+              {pending.length ? <>
+                <p className="work-category-label">Due soon</p>
+                {pending.map((task) => (
+                  <Link href="/homework" className="student-work-row" key={task.id}>
+                    <div className="work-subject-mark"><BookOpenCheck size={17}/></div>
+                    <div><strong>{task.title}</strong><small>{task.subject || "Assignment"}</small></div>
+                    <span className="work-due">{due(task.date)}</span>
+                  </Link>
+                ))}
+              </> : null}
+              {undated.length ? <>
+                <p className="work-category-label undated">No due date</p>
+                {undated.map((task) => (
+                  <Link href="/homework" className="student-work-row" key={task.id}>
+                    <div className="work-subject-mark"><BookOpenCheck size={17}/></div>
+                    <div><strong>{task.title}</strong><small>{task.subject || "Assignment"}</small></div>
+                    <span className="work-due">No due date</span>
+                  </Link>
+                ))}
+              </> : null}
+              {!pending.length && !undated.length ? (
                 <div className="student-empty"><CheckCircle2 size={25}/><strong>Nothing due soon</strong><span>Your next assignment will appear here.</span></div>
-              )}
+              ) : null}
             </div>
           </section>
         </div>
