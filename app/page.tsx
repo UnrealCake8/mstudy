@@ -115,14 +115,14 @@ export default function HomePage() {
 
           <section className="student-work-card">
             <div className="student-section-head">
-              <div><span>Homework</span><h2>Coming up</h2></div>
+              <div><span>Classwork</span><h2>Coming up</h2></div>
               <Link href="/planner">See all</Link>
             </div>
             <div className="student-work-list">
               {pending.length ? <>
                 <p className="work-category-label">Due soon</p>
                 {pending.map((task) => (
-                  <Link href="/homework" className="student-work-row" key={task.id}>
+                  <Link href="/classwork" className="student-work-row" key={task.id}>
                     <div className="work-subject-mark"><BookOpenCheck size={17}/></div>
                     <div><strong>{task.title}</strong><small>{task.subject || "Assignment"}</small></div>
                     <span className="work-due">{due(task.date)}</span>
@@ -132,7 +132,7 @@ export default function HomePage() {
               {undated.length ? <>
                 <p className="work-category-label undated">No due date</p>
                 {undated.map((task) => (
-                  <Link href="/homework" className="student-work-row" key={task.id}>
+                  <Link href="/classwork" className="student-work-row" key={task.id}>
                     <div className="work-subject-mark"><BookOpenCheck size={17}/></div>
                     <div><strong>{task.title}</strong><small>{task.subject || "Assignment"}</small></div>
                     <span className="work-due">No due date</span>
@@ -149,7 +149,7 @@ export default function HomePage() {
         <section className="quick-tools-section">
           <div className="student-section-head"><div><span>Shortcuts</span><h2>Get things done</h2></div></div>
           <div className="student-quick-tools">
-            <Link href="/homework"><span className="quick-icon coral"><BookOpenCheck size={21}/></span><div><strong>Assignments</strong><small>Add or finish homework</small></div><ArrowRight size={18}/></Link>
+            <Link href="/classwork"><span className="quick-icon coral"><BookOpenCheck size={21}/></span><div><strong>Assignments</strong><small>Add or finish homework</small></div><ArrowRight size={18}/></Link>
             <Link href="/calendar"><span className="quick-icon blue"><CalendarDays size={21}/></span><div><strong>Calendar</strong><small>Check dates and events</small></div><ArrowRight size={18}/></Link>
             <Link href="/notes"><span className="quick-icon mint"><NotebookPen size={21}/></span><div><strong>Notes</strong><small>Pick up your revision</small></div><ArrowRight size={18}/></Link>
             <Link href="/practice-papers"><span className="quick-icon lilac"><Sparkles size={21}/></span><div><strong>Practice</strong><small>Make a practice paper</small></div><ArrowRight size={18}/></Link>

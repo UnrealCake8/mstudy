@@ -34,7 +34,7 @@ const mainNav = [
 ] as const;
 
 const sectionRoutes: Record<string, string[]> = {
-  "/planner": ["/planner", "/homework", "/calendar", "/events", "/classroom", "/after-school"],
+  "/planner": ["/planner", "/classwork", "/calendar", "/events", "/classroom", "/after-school"],
   "/messages": ["/messages"],
   "/classes": ["/classes", "/timetable", "/class-locator"],
   "/study": ["/study", "/notes", "/play", "/team", "/practice-papers"],

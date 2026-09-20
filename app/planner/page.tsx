@@ -25,7 +25,7 @@ export default function PlannerPage() {
     .slice(0, 5), [tasks]);
 
   const tools = [
-    ["/homework", "Assignments", "Everything you need to submit, including work you add yourself.", CheckSquare],
+    ["/classwork", "Classwork", "Everything you need to submit, including work you add yourself.", CheckSquare],
     ["/calendar", "Calendar", "See school dates and your schedule in one place.", CalendarDays],
     ["/events", "Exams & events", "Keep tests, exams and important dates together.", ListTodo],
     ["/classroom", "Google Classroom", "Import and review work from Classroom.", GraduationCap],
@@ -44,7 +44,7 @@ export default function PlannerPage() {
     <h2 className="section-title">Planner tools</h2>
     <div className="tool-grid">{tools.map(([href, title, description, Icon]) => <Link className="tool-card" href={href} key={href}><div className="icon"><Icon size={20}/></div><h2>{title}</h2><p>{description}</p></Link>)}</div>
 
-    <div className="section-row"><h2 className="section-title">Due soon</h2><Link href="/homework">View assignments</Link></div>
+    <div className="section-row"><h2 className="section-title">Due soon</h2><Link href="/classwork">View assignments</Link></div>
     <div className="panel">{dueSoon.length === 0 ? <div className="empty-state"><strong>Nothing due soon.</strong><p>Your unfinished assignments will appear here.</p></div> : dueSoon.map(task => <div className="row" key={task.id}><div><strong>{task.title}</strong><br/><small>{task.subject || "No subject"}</small></div><span>{task.dueDate ? `Due ${task.dueDate}` : "No due date"}</span></div>)}</div>
   </section></AppShell>;
 }

@@ -16,7 +16,7 @@ export default function ClassesPage() {
   const tools = [
     ["/timetable", "Official timetable", "Open the PDF timetable assigned to your account.", Clock3],
     ["/class-locator", "Find a classroom", "Use the school room guide when you need directions.", MapPinned],
-    ["/homework", "Class assignments", "See work you have added and imported from Classroom.", BookOpenCheck],
+    ["/classwork", "Classwork", "See work you have added and imported from Classroom.", BookOpenCheck],
     ["/notices", "School notices", "Read the latest announcements for students.", Megaphone],
   ] as const;
 
